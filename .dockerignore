@@ -1,0 +1,47 @@
+# =========================================================
+#  .dockerignore — build context = apps/baak-ai
+# =========================================================
+
+# ---- Dependencies ----
+node_modules
+.npm
+
+# ---- Next.js build output ----
+.next
+out
+build
+
+# ---- Env / secrets (never bake into image) ----
+.env
+.env.local
+.env.development
+.env.production
+*.pem
+
+# ---- Git ----
+.git
+.gitignore
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+*.swp
+.idea
+.vscode
+
+# ---- Local databases / uploads ----
+*.db
+*.sqlite
+uploads
+pgdata
+
+# ---- Logs / coverage / caches ----
+*.log
+coverage
+.turbo
+*.tsbuildinfo
+.next/cache
+
+# ---- Dokumen & artefak besar yang tidak dibutuhkan di image ----
+docs
+*.md

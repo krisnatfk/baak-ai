@@ -1,0 +1,197 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * BAAK AI — design system "Notion paper" (lihat design.md)
+ *
+ * Kanvas hangat seperti kertas (canvas-soft), satu aksen struktural
+ * (Notion Blue), hairline + shadow berlapis tipis, tipe Inter dengan
+ * tracking negatif pada heading. Sticker palette hanya dekoratif.
+ *
+ * Catatan @theme inline: nilai utilities di-inline, sehingga variabel
+ * CSS (--font-sans, --primary, dst.) tetap didefinisikan di :root/.dark
+ * di bawah — jangan pernah membuat referensi diri (--font-sans: var(--font-sans)).
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter), Inter, -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --font-heading: var(--font-inter), Inter, -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-primary-active: var(--primary-active);
+  --color-canvas-soft: var(--canvas-soft);
+  --color-night: var(--night);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* Skala radius per design.md (rounded-xs 4 · sm 5 · md 8 · lg 12 · xl 16 · full pill) */
+  --radius-xs: 4px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-3xl: 24px;
+  --radius-4xl: 28px;
+
+  /* Elevasi "nyaris tak terlihat" — banyak lapisan transparan, bukan drop-shadow keras */
+  --shadow-soft: 0 0.175px 1.041px rgba(0, 0, 0, 0.01), 0 0.8px 2.925px rgba(0, 0, 0, 0.02),
+    0 2.025px 7.847px rgba(0, 0, 0, 0.027), 0 4px 18px rgba(0, 0, 0, 0.04);
+  --shadow-elevated: 0 0.175px 1.041px rgba(0, 0, 0, 0.01), 0 0.8px 2.925px rgba(0, 0, 0, 0.015),
+    0 2.025px 7.847px rgba(0, 0, 0, 0.02), 0 4.5px 16.5px rgba(0, 0, 0, 0.025),
+    0 12px 32px rgba(0, 0, 0, 0.035), 0 23px 52px rgba(0, 0, 0, 0.05);
+}
+
+:root {
+  /* Brand — satu aksen struktural (Notion Blue) + palet sticker dekoratif */
+  --primary: #0075de;
+  --primary-active: #005bab;
+  --primary-foreground: #ffffff;
+  --night: #213183;
+
+  --canvas-soft: #f6f5f4;
+
+  --accent-sky: #62aef0;
+  --accent-purple: #d6b6f6;
+  --accent-purple-deep: #391c57;
+  --accent-pink: #ff64c8;
+  --accent-orange: #dd5b00;
+  --accent-orange-deep: #793400;
+  --accent-teal: #2a9d99;
+  --accent-green: #1aae39;
+  --accent-brown: #523410;
+
+  /* Surface — kanvas hangat; card/panel putih untuk figure/ground */
+  --background: #f6f5f4;
+  --foreground: #1f1e1d;
+  --card: #ffffff;
+  --card-foreground: #1f1e1d;
+  --popover: #ffffff;
+  --popover-foreground: #1f1e1d;
+  --secondary: #efeeec;
+  --secondary-foreground: #31302e;
+  --muted: #efeeec;
+  --muted-foreground: #615d59;
+  --accent: #efeeec;
+  --accent-foreground: #31302e;
+
+  --destructive: #e5484d;
+
+  /* Hairline */
+  --border: #e6e6e6;
+  --input: #e0dfdc;
+  --ring: #0075de;
+
+  /* Grafik — palet sticker */
+  --chart-1: #2a9d99;
+  --chart-2: #62aef0;
+  --chart-3: #ff64c8;
+  --chart-4: #dd5b00;
+  --chart-5: #391c57;
+
+  --radius: 12px;
+
+  /* Sidebar — putih bersih seperti kanvas */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1f1e1d;
+  --sidebar-primary: #0075de;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f3f2f0;
+  --sidebar-accent-foreground: #1f1e1d;
+  --sidebar-border: #e6e6e6;
+  --sidebar-ring: #0075de;
+}
+
+.dark {
+  --primary: #3f8fe0;
+  --primary-active: #5b9fe6;
+  --primary-foreground: #ffffff;
+
+  --canvas-soft: #1b1a19;
+
+  --background: #1b1a19;
+  --foreground: #f4f3f1;
+  --card: #232221;
+  --card-foreground: #f4f3f1;
+  --popover: #232221;
+  --popover-foreground: #f4f3f1;
+  --secondary: #2b2a28;
+  --secondary-foreground: #f4f3f1;
+  --muted: #2b2a28;
+  --muted-foreground: #a29d96;
+  --accent: #2b2a28;
+  --accent-foreground: #f4f3f1;
+
+  --destructive: #e0564e;
+
+  --border: rgba(255, 255, 255, 0.12);
+  --input: rgba(255, 255, 255, 0.16);
+  --ring: #5b9fe6;
+
+  --chart-1: #2a9d99;
+  --chart-2: #62aef0;
+  --chart-3: #ff64c8;
+  --chart-4: #dd5b00;
+  --chart-5: #391c57;
+
+  --sidebar: #1f1e1d;
+  --sidebar-foreground: #f4f3f1;
+  --sidebar-primary: #4c9fe8;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #2b2a28;
+  --sidebar-accent-foreground: #f4f3f1;
+  --sidebar-border: rgba(255, 255, 255, 0.12);
+  --sidebar-ring: #5b9fe6;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "lnum", "locl";
+  }
+  html {
+    @apply font-sans;
+  }
+  /* Suara heading yang rapat & yakin — tracking negatif ringan */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    letter-spacing: -0.015em;
+  }
+}

@@ -1,0 +1,90 @@
+# =========================================================
+#  BAAK AI — Docker Compose (produksi lokal)
+#
+#  Service :
+#   - postgres : PostgreSQL 16 + pgvector (host port 5433,
+#                volume baak_pgdata, otomatis CREATE EXTENSION vector)
+#   - app      : BAAK AI (Next.js standalone, host port 3010)
+#   - n8n      : orkestrator WhatsApp (WAHA) — TIDAK BOLEH diubah/hapus.
+#
+#  Konfigurasi app dibaca dari file `.env` pada folder ini
+#  (app.env_file mengarah ke `.env`). Salin .env.example -> .env.
+#
+#  Usage:
+#     docker compose up -d --build
+#     docker compose logs -f app
+# =========================================================
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: baak-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-baak}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-baak_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-baak_ai}
+      TZ: Asia/Jakarta
+    ports:
+      # Host 5433 menghindari bentrok dengan Postgres lokal (5432).
+      - "5433:5432"
+    volumes:
+      - baak_pgdata:/var/lib/postgresql/data
+      # Inisialisasi: buat ekstensi pgvector otomatis saat volume pertama dibuat.
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-baak} -d ${POSTGRES_DB:-baak_ai}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: baak-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3010:3010"
+    env_file:
+      - .env
+    environment:
+      # Di dalam jaringan compose, DB host adalah nama service `postgres`.
+      # Override ini menggantikan DATABASE_URL dari .env (yang memakai host port).
+      DATABASE_URL: postgresql://${POSTGRES_USER:-baak}:${POSTGRES_PASSWORD:-baak_pass}@postgres:5432/${POSTGRES_DB:-baak_ai}
+      APP_URL: ${APP_URL:-http://localhost:3010}
+      # Data demo hanya di-seed bila diinginkan (default: tidak).
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-0}
+    volumes:
+      - baak_uploads:/app/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3010/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: baak-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - TZ=Asia/Jakarta
+      - GENERIC_TIMEZONE=Asia/Jakarta
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - N8N_RUNNERS_ENABLED=true
+      - N8N_WEBHOOK_URL=https://employee-framing-administered-workers.trycloudflare.com/
+      - N8N_EDITOR_BASE_URL=https://employee-framing-administered-workers.trycloudflare.com/
+      - N8N_PROXY_HOPS=1
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+volumes:
+  n8n_data:
+  baak_pgdata:
+  baak_uploads:
