@@ -8,6 +8,7 @@ import { requireUser } from "@/lib/guards";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { ConversationLiveRefresh } from "@/components/conversations/live-refresh";
 import {
   ChatSessionStatusBadge,
   ConfidenceBadge,
@@ -100,7 +101,10 @@ export default async function ConversationDetailPage({
             {session.messageCount} pesan
           </p>
         </div>
-        <ChatSessionStatusBadge status={session.status} />
+        <div className="flex items-center gap-2">
+          <ConversationLiveRefresh />
+          <ChatSessionStatusBadge status={session.status} />
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">

@@ -10,9 +10,16 @@ import {
   detectSemanticGreeting,
   type IntentDetection,
   type IntentMatchMethod,
+  normalizeIntentMessage,
 } from "./smart-intent";
 
 export type BotRoute = "WELCOME" | "MENU" | "QUESTION";
+
+export interface GreetingMetadata {
+  detected: boolean;
+  canonical: string | null;
+  reply: string | null;
+}
 
 export interface BotResolveResult {
   success: true;
@@ -26,7 +33,14 @@ export interface BotResolveResult {
   botStatus: BotSettingsInput["status"];
   matchedCanonicalRule: string | null;
   matchMethod: IntentMatchMethod | null;
+  greeting: GreetingMetadata;
 }
+
+const NO_GREETING: GreetingMetadata = {
+  detected: false,
+  canonical: null,
+  reply: null,
+};
 
 function stripEmoji(text: string): string {
   return text
@@ -36,23 +50,64 @@ function stripEmoji(text: string): string {
     .trim();
 }
 
+const LEADING_GREETING =
+  /^(?:(?:wa['’]?alaikum(?:(?:u?s+)alam)?|assalamu?\s*alaikum)|(?:halo|hallo|hai|hello|permisi)|(?:selamat\s+(?:pagi|siang|sore|malam)))(?:\s+(?:kak|kaka|admin|min|mimin|mas|mba|mbak|pak|bu|bro|gan))?(?:\s*[\p{Extended_Pictographic}\uFE0F\u200D]+)?(?:\s*[!,.]|(?=\s*\n)|(?=\s*$))\s*/iu;
+
+function stripLeadingGreeting(text: string): string {
+  let value = text.trim();
+  while (LEADING_GREETING.test(value)) {
+    value = value.replace(LEADING_GREETING, "").trimStart();
+  }
+  return value.trim();
+}
+
+/** Gabungkan prefix greeting dan body tanpa salam ganda atau salam generik AI. */
+export function composeGreetingAwareText(
+  greetingReply: string | null,
+  body: string,
+): string {
+  const prefix = greetingReply?.trim() ?? "";
+  const answerBody = prefix ? stripLeadingGreeting(body) : body.trim();
+  return [prefix, answerBody].filter(Boolean).join("\n\n");
+}
+
+function greetingMetadata(
+  detection: IntentDetection,
+  settings: BotSettingsInput,
+): GreetingMetadata {
+  if (detection.matchedRule?.type !== "GREETING") return NO_GREETING;
+  const configuredReply = detection.matchedRule.reply.trim();
+  const reply = configuredReply
+    ? settings.emojiEnabled
+      ? configuredReply
+      : stripEmoji(configuredReply)
+    : null;
+  return {
+    detected: true,
+    canonical:
+      detection.matchedCanonicalRule ??
+      normalizeIntentMessage(detection.matchedRule.phrase),
+    reply: reply || null,
+  };
+}
+
 function welcomeText(
   settings: BotSettingsInput,
   menuText: string,
   specificReply?: string,
 ): string {
   const parts: string[] = [];
-  if (specificReply?.trim()) parts.push(specificReply.trim());
+  const effectiveReply = specificReply?.trim()
+    ? settings.emojiEnabled
+      ? specificReply.trim()
+      : stripEmoji(specificReply)
+    : null;
   if (settings.welcomeEnabled && settings.welcomeIntro.trim()) {
-    const intro = specificReply?.trim()
-      ? settings.welcomeIntro
-          .trim()
-          .split("\n")
-          .filter((line, index) => index !== 0 || !/^(halo|hai|hallo|hello|assalamu|assalamualaikum|selamat (pagi|siang|sore|malam))\b/i.test(stripEmoji(line).trim()))
-          .join("\n")
-          .trim()
-      : settings.welcomeIntro.trim();
-    if (intro) parts.push(intro);
+    const intro = settings.welcomeIntro.trim();
+    const opening = composeGreetingAwareText(effectiveReply, intro);
+    if (opening) parts.push(opening);
+  } else if (effectiveReply) {
+    parts.push(effectiveReply);
   }
   if (settings.includeMenu && menuText) parts.push(menuText);
   if (settings.welcomeClosing.trim()) parts.push(settings.welcomeClosing.trim());
@@ -83,6 +138,7 @@ export async function resolveBotMessage(message: string): Promise<BotResolveResu
       botStatus: settings.status,
       matchedCanonicalRule: null,
       matchMethod: null,
+      greeting: NO_GREETING,
     };
   }
 
@@ -123,6 +179,7 @@ export async function resolveBotMessage(message: string): Promise<BotResolveResu
         botStatus: settings.status,
         matchedCanonicalRule: null,
         matchMethod: "EXACT",
+        greeting: NO_GREETING,
       };
     }
   }
@@ -150,6 +207,7 @@ export async function resolveBotMessage(message: string): Promise<BotResolveResu
     matchedCanonicalRule: detection.matchedCanonicalRule,
     matchMethod: detection.matchMethod,
   };
+  const greeting = greetingMetadata(detection, settings);
 
   if (detection.intent === "GREETING" || detection.intent === "NOISE") {
     const reason = detection.intent;
@@ -171,6 +229,7 @@ export async function resolveBotMessage(message: string): Promise<BotResolveResu
       botStatus: settings.status,
       matchedCanonicalRule: detection.matchedCanonicalRule,
       matchMethod: detection.matchMethod,
+      greeting,
     };
   }
 
@@ -192,5 +251,6 @@ export async function resolveBotMessage(message: string): Promise<BotResolveResu
     botStatus: settings.status,
     matchedCanonicalRule: detection.matchedCanonicalRule,
     matchMethod: detection.matchMethod,
+    greeting,
   };
 }

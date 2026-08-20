@@ -65,6 +65,13 @@ describe("buildRagContext", () => {
     expect(context).toContain("panitia PMB / admin Universitas Teknokrat Indonesia");
   });
 
+  it("melarang AI membuat greeting utama sendiri", () => {
+    const context = buildRagContext([faq()]);
+    expect(context).toContain("Tulis hanya isi jawaban");
+    expect(context).toContain("JANGAN membuka dengan salam atau greeting");
+    expect(context).toContain("Sistem akan menambahkan greeting yang sesuai");
+  });
+
   it("memberi tahu model saat aset relevan akan dikirim setelah jawaban", () => {
     const context = buildRagContext(
       [faq({ answer: "Silakan cek brosur di bawah ini." })],

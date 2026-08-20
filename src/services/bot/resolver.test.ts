@@ -16,7 +16,7 @@ vi.mock("@/services/bot/menu", () => ({
 }));
 vi.mock("@/services/bot/analytics", () => ({ logBotEventBestEffort: mocks.log }));
 
-import { resolveBotMessage } from "./resolver";
+import { composeGreetingAwareText, resolveBotMessage } from "./resolver";
 
 const settings = {
   botName: "Asisten PMB", institutionName: "Teknokrat", userCallName: "Kak",
@@ -29,11 +29,11 @@ const settings = {
   status: "ACTIVE" as const, maintenanceMessage: "Maintenance", humanHandoffEnabled: true, humanHandoffMessage: "", humanHandoffUrl: "", humanHandoffPhone: "", humanHandoffAfterUnanswered: 1,
   answerStyle: "NORMAL" as const, answerTone: "RAMAH_PMB" as const,
   rules: [
-    { type: "GREETING" as const, phrase: "halo", reply: "Halo Kak", isActive: true },
-    { type: "GREETING" as const, phrase: "hallo", reply: "Halo Kak", isActive: true },
-    { type: "GREETING" as const, phrase: "assalamualaikum", reply: "Waalaikumsalam Kak", isActive: true },
-    { type: "GREETING" as const, phrase: "selamat pagi", reply: "Selamat pagi Kak", isActive: true },
-    { type: "GREETING" as const, phrase: "permisi", reply: "", isActive: true },
+    { type: "GREETING" as const, phrase: "halo", reply: "Halo Kak 👋", isActive: true },
+    { type: "GREETING" as const, phrase: "hallo", reply: "Halo Kak 👋", isActive: true },
+    { type: "GREETING" as const, phrase: "assalamualaikum", reply: "Waalaikumsalam Kak 👋", isActive: true },
+    { type: "GREETING" as const, phrase: "selamat pagi", reply: "Selamat pagi Kak 👋", isActive: true },
+    { type: "GREETING" as const, phrase: "permisi", reply: "Silakan Kak 👋", isActive: true },
     { type: "NOISE" as const, phrase: "p", reply: "", isActive: true },
     { type: "NOISE" as const, phrase: "....", reply: "", isActive: true },
   ],
@@ -53,6 +53,21 @@ describe("resolveBotMessage", () => {
 
   it.each(["halo", "hallo", "assalamualaikum", "p", "...."])("%s menjadi WELCOME", async (message) => {
     expect(await resolveBotMessage(message)).toMatchObject({ route: "WELCOME", ragQuery: null });
+  });
+
+  it.each([
+    ["assalamualaikum", "assalamualaikum", "Waalaikumsalam Kak 👋"],
+    ["assalamualaikum kak", "assalamualaikum", "Waalaikumsalam Kak 👋"],
+    ["assalamu alaikum min", "assalamualaikum", "Waalaikumsalam Kak 👋"],
+    ["asalamualaikum", "assalamualaikum", "Waalaikumsalam Kak 👋"],
+    ["assalamualaikum wr wb", "assalamualaikum", "Waalaikumsalam Kak 👋"],
+  ])("greeting %s membawa metadata canonical", async (message, canonical, reply) => {
+    const response = await resolveBotMessage(message);
+    expect(response).toMatchObject({
+      route: "WELCOME",
+      greeting: { detected: true, canonical, reply },
+    });
+    expect(response.responseText).toContain(reply);
   });
 
   it.each([
@@ -79,13 +94,30 @@ describe("resolveBotMessage", () => {
 
   it.each([
     ["assalamualaikum kak, berapa biaya kuliah?", "berapa biaya kuliah?"],
+    ["assalamualaikum kak, jadwal pmb kapan?", "jadwal pmb kapan?"],
+    ["assalamualaikum kak, saya mau tanya jadwal pmb kapan?", "jadwal pmb kapan?"],
+    ["Assalamualaikum kak, saya mau tanya apakah saya bisa minta jadwal pmb", "apakah saya bisa minta jadwal pmb"],
+    ["halo kak, jadwal pmb?", "jadwal pmb?"],
     ["halo min kapan pendaftaran dibuka?", "kapan pendaftaran dibuka?"],
+    ["selamat pagi min, ada beasiswa?", "ada beasiswa?"],
     ["selamat pagi kak, apakah ada beasiswa?", "apakah ada beasiswa?"],
+    ["permisi kak, apa saja program studinya?", "apa saja program studinya?"],
   ])("greeting pada pertanyaan %s dipotong untuk RAG", async (message, ragQuery) => {
-    expect(await resolveBotMessage(message)).toMatchObject({
+    const response = await resolveBotMessage(message);
+    expect(response).toMatchObject({
       route: "QUESTION",
       reason: "GREETING_WITH_QUESTION",
       ragQuery,
+      greeting: { detected: true },
+    });
+    expect(response.greeting.reply).toBeTruthy();
+  });
+
+  it("question tanpa greeting tidak diberi greeting palsu", async () => {
+    expect(await resolveBotMessage("jadwal pmb?")).toMatchObject({
+      route: "QUESTION",
+      reason: "QUESTION",
+      greeting: { detected: false, canonical: null, reply: null },
     });
   });
 
@@ -94,6 +126,7 @@ describe("resolveBotMessage", () => {
       route: "MENU",
       ragQuery: "Berapa biaya kuliah?",
       resolvedMenuItem: { number: 1, faqId: "faq-1" },
+      greeting: { detected: false, canonical: null, reply: null },
     });
   });
 
@@ -111,5 +144,20 @@ describe("resolveBotMessage", () => {
     const response = await resolveBotMessage("halo kak");
     expect(response.responseText?.match(/Halo Kak/g)).toHaveLength(1);
     expect(response.responseText).toContain("Informasi PMB");
+  });
+
+  it("komposer menghapus greeting AI yang duplikat atau bertentangan", () => {
+    expect(
+      composeGreetingAwareText(
+        "Waalaikumsalam Kak 👋",
+        "Waalaikumsalam Kak 👋\n\nUntuk jadwal PMB, lihat brosur.",
+      ),
+    ).toBe("Waalaikumsalam Kak 👋\n\nUntuk jadwal PMB, lihat brosur.");
+    expect(
+      composeGreetingAwareText(
+        "Waalaikumsalam Kak 👋",
+        "Halo Kak! Untuk jadwal PMB, lihat brosur.",
+      ),
+    ).toBe("Waalaikumsalam Kak 👋\n\nUntuk jadwal PMB, lihat brosur.");
   });
 });

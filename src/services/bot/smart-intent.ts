@@ -83,6 +83,16 @@ function stripNonMeaningfulTokens(value: string, modifiers: Set<string>): string
   return tokens.join(" ");
 }
 
+function stripQuestionPreamble(value: string): string {
+  return value
+    .replace(
+      /^(?:(?:saya|aku|kami)\s+)?(?:mau|ingin|hendak)\s+(?:bertanya|tanya)(?:\s+(?:dong|nih))?\s+/,
+      "",
+    )
+    .replace(/^(?:mohon|boleh)\s+(?:bertanya|tanya)\s+/, "")
+    .trim();
+}
+
 function isMeaningfulQuestion(value: string, original: string): boolean {
   if (!value) return false;
   const tokens = value.split(" ");
@@ -145,9 +155,18 @@ export function detectDeterministicIntent(
   const legacyNormalized = normalizeText(originalMessage);
   const exact = activeRules.find((rule) => normalizeText(rule.phrase) === legacyNormalized);
   if (exact) {
+    const canonical = normalizeIntentMessage(exact.phrase);
+    const canonicalRule = exact.type === "GREETING"
+      ? activeRules.find(
+          (rule) =>
+            rule.type === "GREETING" &&
+            normalizeIntentMessage(rule.phrase) === canonical &&
+            normalizeText(rule.phrase) === canonical,
+        ) ?? exact
+      : exact;
     return result(exact.type, normalizedMessage, {
-      matchedRule: exact,
-      matchedCanonicalRule: exact.phrase,
+      matchedRule: canonicalRule,
+      matchedCanonicalRule: exact.type === "GREETING" ? canonical : exact.phrase,
       matchMethod: originalMessage.trim().toLowerCase() === exact.phrase.trim().toLowerCase() ? "EXACT" : "NORMALIZED",
     });
   }
@@ -155,10 +174,19 @@ export function detectDeterministicIntent(
   if (!options.enabled) return result("UNKNOWN", normalizedMessage);
 
   const modifiers = parseModifiers(options.modifiers);
-  const greetingRules = activeRules
+  const rawGreetingRules = activeRules
     .filter((rule) => rule.type === "GREETING")
     .map((rule) => ({ rule, canonical: normalizeIntentMessage(rule.phrase) }))
     .filter((item) => item.canonical);
+  const greetingRules = rawGreetingRules.map((item) => ({
+    ...item,
+    rule:
+      rawGreetingRules.find(
+        (candidate) =>
+          candidate.canonical === item.canonical &&
+          normalizeText(candidate.rule.phrase) === item.canonical,
+      )?.rule ?? item.rule,
+  }));
 
   let greetingMatch: { rule: IntentRule; canonical: string; method: IntentMatchMethod; consumed: number } | null = null;
   for (const candidate of greetingRules) {
@@ -185,21 +213,23 @@ export function detectDeterministicIntent(
 
   if (greetingMatch) {
     const rawRemainder = normalizedMessage.slice(greetingMatch.consumed).trim();
-    const remainder = stripNonMeaningfulTokens(rawRemainder, modifiers);
+    const remainder = stripQuestionPreamble(
+      stripNonMeaningfulTokens(rawRemainder, modifiers),
+    );
     if (isMeaningfulQuestion(remainder, originalMessage)) {
       return result("QUESTION", normalizedMessage, {
         ragQuery: options.stripGreetingFromQuestion
           ? ragQueryFromRemainder(remainder, originalMessage)
           : originalMessage.trim(),
         matchedRule: greetingMatch.rule,
-        matchedCanonicalRule: greetingMatch.rule.phrase,
+        matchedCanonicalRule: greetingMatch.canonical,
         matchMethod: greetingMatch.method,
         greetingWithQuestion: true,
       });
     }
     return result("GREETING", normalizedMessage, {
       matchedRule: greetingMatch.rule,
-      matchedCanonicalRule: greetingMatch.rule.phrase,
+      matchedCanonicalRule: greetingMatch.canonical,
       matchMethod: greetingMatch.method,
     });
   }
@@ -241,7 +271,7 @@ export async function detectSemanticGreeting(
     const matchedRule = greetings[bestIndex];
     return result("GREETING", normalizedMessage, {
       matchedRule,
-      matchedCanonicalRule: matchedRule.phrase,
+      matchedCanonicalRule: normalizeIntentMessage(matchedRule.phrase),
       matchMethod: "SEMANTIC",
     });
   } catch (error) {

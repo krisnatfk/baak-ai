@@ -57,6 +57,13 @@
       "when": 1787207534293,
       "tag": "0007_groovy_red_wolf",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787210000000,
+      "tag": "0008_greeting_reply_defaults",
+      "breakpoints": true
     }
   ]
 }

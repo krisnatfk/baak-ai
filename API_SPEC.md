@@ -109,7 +109,44 @@ Mengembalikan konteks siap-pakai untuk Local LLM, plus logika anti-halusinasi.
 - Menyimpan `retrieval_logs`.
 - Bila LOW → menyimpan `unanswered_questions` (status `NEW`).
 
-### 1.3 `GET /api/health`
+### 1.3 `POST /api/bot/resolve`
+
+Menentukan route bot dan mempertahankan greeting sebagai metadata, termasuk
+ketika pesan diteruskan ke RAG sebagai `QUESTION`.
+
+**Request**
+
+```json
+{ "message": "assalamualaikum kak, jadwal pmb kapan?" }
+```
+
+**Response 200 — greeting + question**
+
+```json
+{
+  "success": true,
+  "route": "QUESTION",
+  "reason": "GREETING_WITH_QUESTION",
+  "ragQuery": "jadwal pmb kapan?",
+  "responseText": null,
+  "greeting": {
+    "detected": true,
+    "canonical": "assalamualaikum",
+    "reply": "Waalaikumsalam Kak 👋"
+  }
+}
+```
+
+Untuk question tanpa greeting, ketiga nilai greeting adalah
+`false`/`null`/`null`. Gunakan `ragQuery` untuk retrieval dan prompt AI. Setelah
+AI menghasilkan isi jawaban tanpa salam, n8n dapat membentuk teks akhir dari
+`greeting.reply + "\n\n" + answerBody` hanya jika `greeting.detected` dan
+`greeting.reply` tersedia. Jangan menambahkan fallback `Halo Kak`.
+
+Untuk `WELCOME`, `responseText` sudah merupakan greeting + intro/menu yang
+telah dideduplikasi. Untuk `MENU`, greeting selalu tidak terdeteksi.
+
+### 1.4 `GET /api/health`
 
 Health check untuk container / monitoring.
 

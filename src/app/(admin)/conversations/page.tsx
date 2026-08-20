@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/table";
 import { ChatSessionStatusBadge } from "@/components/knowledge/badges";
 import { Pagination } from "@/components/pagination";
+import { ConversationLiveRefresh } from "@/components/conversations/live-refresh";
 
 export const dynamic = "force-dynamic";
 
@@ -79,11 +80,14 @@ export default async function ConversationsPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">Percakapan</h1>
-        <p className="text-sm text-muted-foreground">
-          {total} sesi percakapan terekam dari bot WhatsApp (chat memory).
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Percakapan</h1>
+          <p className="text-sm text-muted-foreground">
+            {total} sesi percakapan terekam dari bot WhatsApp (chat memory).
+          </p>
+        </div>
+        <ConversationLiveRefresh />
       </div>
 
       <form

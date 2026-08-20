@@ -76,7 +76,8 @@ export function buildRagContext(
       "3. DILARANG menambahkan fakta umum atau asumsi di luar konteks.\n" +
       "4. DILARANG mencampur informasi layanan mahasiswa aktif (seperti PKL, KRS, Wisuda, KHS).\n" +
       "5. Jika informasi tidak tersedia pada KNOWLEDGE BASE dan tidak tersedia pada ASET TERLAMPIR, katakan secara jujur dan sopan bahwa informasi tersebut belum tersedia di database informasi penerimaan mahasiswa baru kami, dan sarankan untuk menghubungi panitia PMB / admin Universitas Teknokrat Indonesia.\n" +
-      "6. Jika jawaban KNOWLEDGE BASE mengarahkan pengguna untuk melihat gambar/file dan bagian ASET TERLAMPIR tersedia, JANGAN mengatakan informasi tidak tersedia. Beri tahu pengguna secara singkat untuk melihat gambar atau lampiran yang dikirim setelah pesan ini. Jangan menuliskan URL internal aset.",
+      "6. Jika jawaban KNOWLEDGE BASE mengarahkan pengguna untuk melihat gambar/file dan bagian ASET TERLAMPIR tersedia, JANGAN mengatakan informasi tidak tersedia. Beri tahu pengguna secara singkat untuk melihat gambar atau lampiran yang dikirim setelah pesan ini. Jangan menuliskan URL internal aset.\n" +
+      "7. Tulis hanya isi jawaban. JANGAN membuka dengan salam atau greeting seperti Halo, Hai, Assalamualaikum, Waalaikumsalam, atau Selamat pagi/siang/sore/malam. Sistem akan menambahkan greeting yang sesuai secara terpisah bila pengguna memang mengirim greeting.",
   );
 
   return parts.join("\n\n");

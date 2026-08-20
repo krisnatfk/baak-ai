@@ -25,7 +25,11 @@ export const dynamic = "force-dynamic";
 const contextSchema = z.object({
   message: z.string().trim().min(1, "message wajib diisi").max(2000),
   sessionId: z.string().trim().max(191).nullish(),
+  session_id: z.string().trim().max(191).nullish(),
+  chatId: z.string().trim().max(191).nullish(),
   sender: z.string().trim().max(50).nullish(),
+  senderId: z.string().trim().max(50).nullish(),
+  from: z.string().trim().max(50).nullish(),
 });
 
 /**
@@ -64,7 +68,13 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return apiError(400, "VALIDATION_ERROR", "Parameter tidak valid.");
   }
-  const { message, sessionId, sender } = parsed.data;
+  const { message } = parsed.data;
+  const sender = parsed.data.sender ?? parsed.data.senderId ?? parsed.data.from ?? null;
+  const sessionId =
+    parsed.data.sessionId ??
+    parsed.data.session_id ??
+    parsed.data.chatId ??
+    (sender ? `sender:${sender}` : null);
 
   // ---- Retrieval + klasifikasi confidence ----
   const settings = await getBotSettings();
@@ -112,6 +122,7 @@ export async function POST(request: Request) {
   // ---- Efek samping (best-effort, tidak menggagalkan respons) ----
 
   // 1) Chat memory — simpan pesan USER bila ada sessionId.
+  let conversationRecorded = false;
   if (sessionId) {
     try {
       await recordChatMessage({
@@ -123,6 +134,7 @@ export async function POST(request: Request) {
         // Isi topic hanya saat masih kosong (pertanyaan pertama).
         topic: message,
       });
+      conversationRecorded = true;
     } catch (err) {
       console.error("[rag/context] Gagal menyimpan chat:", err);
     }
@@ -221,6 +233,7 @@ export async function POST(request: Request) {
       media: enrichment.media,
       attachments: enrichment.attachments,
       requiresHuman: false,
+      conversationRecorded,
       thresholds,
     });
   }
@@ -247,6 +260,7 @@ export async function POST(request: Request) {
     media: [],
     attachments: [],
     requiresHuman,
+    conversationRecorded,
     message: settings.notFoundMessage,
     menu: fallbackMenu,
     handoff: buildHandoffDetails(handoffState.includeDetails, {

@@ -34,6 +34,33 @@ describe("smart intent normalization", () => {
     });
   });
 
+  it.each([
+    "assalamualaikum",
+    "assalamualaikum kak",
+    "assalamu alaikum min",
+    "asalamualaikum",
+    "assalamualaikum wr wb",
+  ])("%s dipetakan ke canonical assalamualaikum", (message) => {
+    expect(detectDeterministicIntent(message, rules, options)).toMatchObject({
+      matchedCanonicalRule: "assalamualaikum",
+      matchedRule: expect.objectContaining({ reply: "Waalaikumsalam Kak" }),
+    });
+  });
+
+  it("menghapus preambule tanya dari query RAG", () => {
+    expect(
+      detectDeterministicIntent(
+        "assalamualaikum kak, saya mau tanya jadwal pmb kapan?",
+        rules,
+        options,
+      ),
+    ).toMatchObject({
+      intent: "QUESTION",
+      greetingWithQuestion: true,
+      ragQuery: "jadwal pmb kapan?",
+    });
+  });
+
   it("noise punctuation dikenali tanpa mengambil short valid question", () => {
     expect(detectDeterministicIntent("???", rules, options).intent).toBe("NOISE");
     expect(detectDeterministicIntent("biaya?", rules, options).intent).toBe("QUESTION");

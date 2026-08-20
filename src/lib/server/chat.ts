@@ -39,6 +39,10 @@ export async function recordChatMessage(input: RecordChatInput): Promise<void> {
     .set({
       messageCount: sql`${chatSessions.messageCount} + 1`,
       lastMessageAt: new Date(),
+      sender:
+        sender != null
+          ? sql`COALESCE(NULLIF(${chatSessions.sender}, ''), ${sender})`
+          : undefined,
       topic:
         topic != null
           ? sql`COALESCE(NULLIF(${chatSessions.topic}, ''), ${topic})`
