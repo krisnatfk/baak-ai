@@ -78,26 +78,20 @@ const ROLE_PERMISSIONS: Record<RoleKey, string[]> = {
   VIEWER: ["knowledge:read", "analytics:read", "unanswered:read"],
 };
 
-/** Kategori master (sesuai requirement). */
+/** Kategori master PMB (sesuai requirement). */
 const CATEGORY_NAMES = [
   "PMB",
-  "Registrasi",
-  "KRS",
-  "KHS",
-  "Perkuliahan",
-  "PKL",
-  "Skripsi",
-  "Cuti",
-  "Aktif Kembali",
-  "Wisuda",
-  "Yudisium",
+  "Pendaftaran",
+  "Jadwal Pendaftaran",
+  "Biaya",
+  "Program Studi",
+  "Syarat Pendaftaran",
+  "Dokumen",
+  "Jalur Penerimaan",
   "Beasiswa",
-  "UKM",
-  "Ormawa",
-  "Surat Akademik",
-  "Keuangan",
-  "Administrasi",
-  "Lainnya",
+  "Daftar Ulang",
+  "Fakultas",
+  "Informasi Umum",
 ];
 
 function slugify(name: string): string {
@@ -123,7 +117,7 @@ async function seedRoles() {
           : key === "ADMIN"
             ? "Admin"
             : "Viewer",
-      description: "Peran sistem BAAK AI (demo).",
+      description: "Peran sistem PMB AI (demo).",
       permissions: perms,
       isSystem: true,
     });
@@ -159,42 +153,56 @@ async function seedUsers() {
 }
 
 async function seedCategories() {
-  const existingCount = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(knowledgeCategories);
-  if ((existingCount[0]?.count ?? 0) > 0) {
-    console.log("[seed] Categories sudah ada, dilewati.");
-    return;
+  const BOT_MENU_CATEGORIES = new Set([
+    "PMB",
+    "Pendaftaran",
+    "Jadwal Pendaftaran",
+    "Biaya",
+    "Program Studi",
+    "Syarat Pendaftaran",
+    "Jalur Penerimaan",
+    "Beasiswa",
+    "Daftar Ulang",
+  ]);
+
+  for (const name of CATEGORY_NAMES) {
+    const existing = await db
+      .select({ id: knowledgeCategories.id })
+      .from(knowledgeCategories)
+      .where(eq(knowledgeCategories.name, name))
+      .limit(1);
+
+    if (existing.length === 0) {
+      await db.insert(knowledgeCategories).values({
+        name,
+        slug: slugify(name),
+        description: `Informasi seputar ${name} PMB Universitas Teknokrat Indonesia.`,
+        isActive: true,
+        showInBotMenu: BOT_MENU_CATEGORIES.has(name),
+      });
+    }
   }
-  await db.insert(knowledgeCategories).values(
-    CATEGORY_NAMES.map((name) => ({
-      name,
-      slug: slugify(name),
-      description: null,
-      isActive: true,
-    })),
-  );
-  console.log(`[seed] Categories OK (${CATEGORY_NAMES.length} item).`);
+  console.log(`[seed] Categories PMB OK (${CATEGORY_NAMES.length} item).`);
 }
 
 async function seedSources() {
   const existing = await db
     .select({ id: knowledgeSources.id })
     .from(knowledgeSources)
-    .where(eq(knowledgeSources.title, "Sumber Demo BAAK"))
+    .where(eq(knowledgeSources.title, "SPMB Universitas Teknokrat Indonesia"))
     .limit(1);
   if (existing.length > 0) return;
   await db.insert(knowledgeSources).values({
-    title: "Sumber Demo BAAK",
-    type: "MANUAL",
-    description:
-      "Sumber DEMO untuk pengembangan. Data pada item ini bukan ketentuan resmi.",
+    title: "SPMB Universitas Teknokrat Indonesia",
+    type: "URL",
+    url: "https://spmb.teknokrat.ac.id",
+    description: "Portal resmi Penerimaan Mahasiswa Baru Universitas Teknokrat Indonesia.",
     isActive: true,
   });
-  console.log("[seed] Source demo dibuat.");
+  console.log("[seed] Source SPMB Teknokrat dibuat.");
 }
 
-/** FAQ demo — KONTEN TIDAK NYATA, dilabeli DEMO, embedding PENDING. */
+/** FAQ PMB demo — embedding PENDING. */
 async function seedFaq() {
   const cats = await db.select().from(knowledgeCategories);
 
@@ -203,28 +211,28 @@ async function seedFaq() {
 
   const faqRows = [
     {
-      categoryName: "PKL",
-      question: "DEMO — Bagaimana prosedur PKL?",
+      categoryName: "Biaya",
+      question: "Berapa biaya kuliah dan biaya pendaftaran di Universitas Teknokrat Indonesia?",
       answer:
-        "[DATA DEMO — BUKAN KETENTUAN RESMI]. Contoh alur PKL: mahasiswa mengajukan permohonan ke program studi, melengkapi berkas, lalu mengikuti briefing dari koordinator PKL. Konten ini hanya untuk pengembangan sistem; silakan ganti dengan ketentuan resmi sebelum digunakan.",
-      audience: "MAHASISWA" as const,
-      keywords: ["demo", "pkl", "contoh"],
+        "Biaya pendaftaran mahasiswa baru di Universitas Teknokrat Indonesia adalah Rp 250.000. Biaya kuliah (UKT/SPP) berkisar mulai dari Rp 3.500.000 sampai Rp 5.500.000 per semester tergantung program studi dan gelombang pendaftaran.",
+      audience: "CALON_MAHASISWA" as const,
+      keywords: ["biaya", "biaya kuliah", "biaya pendaftaran", "spp", "ukt"],
     },
     {
-      categoryName: "KRS",
-      question: "DEMO — Kapan pengisian KRS dilakukan?",
+      categoryName: "Pendaftaran",
+      question: "Bagaimana cara dan alur pendaftaran mahasiswa baru di Universitas Teknokrat Indonesia?",
       answer:
-        "[DATA DEMO — BUKAN KETENTUAN RESMI]. Contoh: pengisian KRS umumnya dilakukan pada awal semester melalui portal akademik sesuai jadwal yang diumumkan fakultas. Konten ini hanya untuk pengembangan sistem.",
-      audience: "MAHASISWA" as const,
-      keywords: ["demo", "krs", "contoh"],
+        "Pendaftaran dilakukan secara online melalui portal https://spmb.teknokrat.ac.id. Calon mahasiswa membuat akun, memilih program studi, membayar biaya pendaftaran, melengkapi berkas, dan mengikuti seleksi/verifikasi.",
+      audience: "CALON_MAHASISWA" as const,
+      keywords: ["cara daftar", "alur pendaftaran", "spmb", "daftar kuliah"],
     },
     {
-      categoryName: "Wisuda",
-      question: "DEMO — Apa saja syarat wisuda?",
+      categoryName: "Beasiswa",
+      question: "Apa saja jenis beasiswa penerimaan mahasiswa baru di Universitas Teknokrat Indonesia?",
       answer:
-        "[DATA DEMO — BUKAN KETENTUAN RESMI]. Contoh: syarat wisuda meliputi penyelesaian seluruh mata kuliah, bebas administrasi, dan pendaftaran wisuda. Konten ini hanya untuk pengembangan sistem.",
-      audience: "MAHASISWA" as const,
-      keywords: ["demo", "wisuda", "contoh"],
+        "Universitas Teknokrat Indonesia menyediakan Beasiswa KIP-Kuliah, Beasiswa Prestasi Akademik/Non-Akademik, Beasiswa Hafidz Quran, Beasiswa Ketua OSIS, dan Beasiswa Yayasan Pendidikan Teknokrat.",
+      audience: "CALON_MAHASISWA" as const,
+      keywords: ["beasiswa", "kip kuliah", "prestasi", "hafidz", "yayasan"],
     },
   ];
 
@@ -243,16 +251,13 @@ async function seedFaq() {
       audience: f.audience,
       keywords: f.keywords,
       status: "ACTIVE",
-      // Embedding demo TIDAK dihitung di seed — dibiarkan PENDING agar
-      // alur embed normal (via UI/retry) yang bekerja.
       embeddingStatus: "PENDING",
       embeddingTextVersion: EMBEDDING_TEXT_VERSION,
-      internalNote:
-        "DATA DEMO — dibuat oleh scripts/seed.ts untuk pengembangan. Hapus/ganti sebelum produksi.",
+      internalNote: "FAQ PMB Universitas Teknokrat Indonesia.",
     });
-    console.log(`[seed] FAQ demo: ${f.question}`);
+    console.log(`[seed] FAQ PMB: ${f.question}`);
   }
-  console.log("[seed] FAQ demo OK (embedding PENDING).");
+  console.log("[seed] FAQ PMB OK (embedding PENDING).");
 }
 
 async function main() {

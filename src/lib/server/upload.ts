@@ -10,11 +10,11 @@
  * Nama asli tetap disimpan di kolom `file_name` untuk ditampilkan.
  */
 
-import fs from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
-import { getMaxUploadMb, getUploadDir } from "@/lib/env";
+import { getMaxUploadMb } from "@/lib/env";
 import { formatBytes } from "@/lib/format";
+import { writeLocalUploadFile } from "@/lib/server/upload-storage";
 import {
   detectFileType,
   type ExtractableFileType,
@@ -62,14 +62,13 @@ export async function saveUpload(file: File): Promise<SavedUpload> {
   const originalName = path.basename(file.name);
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  const uploadDir = getUploadDir();
-  fs.mkdirSync(uploadDir, { recursive: true });
-
   const storedName = buildStoredName(originalName, EXTENSION_BY_TYPE[fileType]);
-  const absolutePath = path.join(uploadDir, storedName);
-  await fs.promises.writeFile(absolutePath, buffer);
-
-  const filePath = `${uploadDir.replace(/\\/g, "/")}/${storedName}`;
+  let filePath: string;
+  try {
+    ({ filePath } = await writeLocalUploadFile(storedName, buffer));
+  } catch {
+    throw new UploadError("Gagal menyimpan file upload. Silakan coba lagi.");
+  }
 
   return {
     fileName: originalName,

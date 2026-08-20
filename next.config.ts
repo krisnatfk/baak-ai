@@ -8,6 +8,11 @@ const nextConfig: NextConfig = {
   // PassThrough + saxes async generator) breaks and throws
   // "Cannot read properties of undefined (reading 'sheets')".
   serverExternalPackages: ["pg", "exceljs"],
+  experimental: {
+    // Form FAQ dapat membawa satu media + satu attachment (masing-masing
+    // divalidasi MAX_UPLOAD_MB=15 di server), plus overhead multipart.
+    serverActions: { bodySizeLimit: "32mb" },
+  },
   // Langkah aman: hanya origin lokal yang boleh memanggil Server Actions.
   // Pada deployment LAN tanpa domain, biarkan origin bawaan. Sesuaikan bila
   // di belakang reverse-proxy dengan hostname lain.

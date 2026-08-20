@@ -56,7 +56,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/node_modules/dotenv ./node_module
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/tsx ./node_modules/tsx
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/bcryptjs ./node_modules/bcryptjs
 
-# Folder upload (volume: baak_uploads -> /app/uploads)
+# Folder upload (runtime Compose: bind mount ./uploads -> /app/uploads)
 RUN mkdir -p /app/uploads && chown nextjs:nodejs /app/uploads
 
 USER nextjs

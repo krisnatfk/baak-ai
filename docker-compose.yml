@@ -56,10 +56,13 @@ services:
       # Override ini menggantikan DATABASE_URL dari .env (yang memakai host port).
       DATABASE_URL: postgresql://${POSTGRES_USER:-baak}:${POSTGRES_PASSWORD:-baak_pass}@postgres:5432/${POSTGRES_DB:-baak_ai}
       APP_URL: ${APP_URL:-http://localhost:3010}
+      UPLOAD_DIR: /app/uploads
+      BOT_MEDIA_BASE_URL: ${BOT_MEDIA_BASE_URL:-}
       # Data demo hanya di-seed bila diinginkan (default: tidak).
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-0}
     volumes:
-      - baak_uploads:/app/uploads
+      # Satu storage fisik untuk upload host dan runtime container.
+      - ./uploads:/app/uploads
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3010/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""]
       interval: 10s
@@ -78,8 +81,8 @@ services:
       - GENERIC_TIMEZONE=Asia/Jakarta
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
       - N8N_RUNNERS_ENABLED=true
-      - N8N_WEBHOOK_URL=https://employee-framing-administered-workers.trycloudflare.com/
-      - N8N_EDITOR_BASE_URL=https://employee-framing-administered-workers.trycloudflare.com/
+      - N8N_WEBHOOK_URL=https://n8n.intansolusindo.cloud
+      - N8N_EDITOR_BASE_URL=https://n8n.intansolusindo.cloud
       - N8N_PROXY_HOPS=1
     volumes:
       - n8n_data:/home/node/.n8n
@@ -88,3 +91,4 @@ volumes:
   n8n_data:
   baak_pgdata:
   baak_uploads:
+    # Backup legacy; sengaja dipertahankan tetapi tidak lagi di-mount ke app.

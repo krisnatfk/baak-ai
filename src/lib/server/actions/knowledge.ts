@@ -13,9 +13,7 @@
 
 import "server-only";
 import { revalidatePath } from "next/cache";
-import fs from "node:fs";
-import path from "node:path";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, asc } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db/client";
 import {
@@ -23,6 +21,7 @@ import {
   knowledgeAlternativeQuestions,
   knowledgeAttachments,
   knowledgeCategories,
+  knowledgeDocuments,
   knowledgeItemSources,
   knowledgeItems,
   knowledgeMedia,
@@ -31,7 +30,6 @@ import {
   unansweredQuestions,
 } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
-import { getUploadDir } from "@/lib/env";
 import { requireRole } from "@/lib/guards";
 import {
   categorySchema,
@@ -46,6 +44,11 @@ import {
   type SavedAttachmentFile,
   type SavedMediaFile,
 } from "@/lib/server/media-upload";
+import {
+  removeLocalUploadFile,
+  resolveLocalUploadPath,
+} from "@/lib/server/upload-storage";
+import { runBestEffortPostCommitCleanup } from "@/lib/server/upload-lifecycle";
 import { embeddingFieldsChanged } from "@/services/embedding/changed";
 import { processEmbeddingQueue } from "@/services/embedding/worker";
 import { type ActionResult, fail, isUniqueViolation, ok, zodFail } from "./shared";
@@ -111,7 +114,10 @@ interface ParsedFaqSubmission {
  * dan disimpan ke disk SEBELUM transaksi; bila transaksi gagal, pemanggil
  * bertanggung jawab membersihkannya (cleanupSavedFiles).
  */
-async function parseFaqFormData(formData: FormData): Promise<ParsedFaqSubmission> {
+async function parseFaqFormData(
+  formData: FormData,
+  allowedExistingPaths: Set<string> = new Set(),
+): Promise<ParsedFaqSubmission> {
   const raw = formData.get("data");
   if (typeof raw !== "string") throw new FaqParseError();
 
@@ -126,46 +132,110 @@ async function parseFaqFormData(formData: FormData): Promise<ParsedFaqSubmission
   const data = parsed.data;
 
   const savedMedia: (SavedMediaFile | null)[] = [];
-  for (let i = 0; i < data.media.length; i++) {
-    if (!data.media[i].hasFile) {
-      savedMedia.push(null);
-      continue;
-    }
-    const file = formData.get(`media_${i}`);
-    if (!(file instanceof File) || file.size === 0) {
-      throw new MediaUploadError("File media tidak ditemukan.");
-    }
-    savedMedia.push(await saveImageFile(file));
-  }
-
   const savedAttachments: (SavedAttachmentFile | null)[] = [];
-  for (let i = 0; i < data.attachments.length; i++) {
-    if (!data.attachments[i].hasFile) {
-      savedAttachments.push(null);
-      continue;
+  const submission = { data, savedMedia, savedAttachments };
+  try {
+    for (let i = 0; i < data.media.length; i++) {
+      if (!data.media[i].hasFile) {
+        const retainedPath = data.media[i].filePath;
+        if (retainedPath && !isAllowedExistingPath(retainedPath, allowedExistingPaths)) {
+          throw new MediaUploadError(
+            "Referensi file media tidak valid. Unggah ulang file.",
+          );
+        }
+        savedMedia.push(null);
+        continue;
+      }
+      const file = formData.get(`media_${i}`);
+      if (!(file instanceof File) || file.size === 0) {
+        throw new MediaUploadError("File media tidak ditemukan.");
+      }
+      savedMedia.push(await saveImageFile(file));
     }
-    const file = formData.get(`attachment_${i}`);
-    if (!(file instanceof File) || file.size === 0) {
-      throw new MediaUploadError("File lampiran tidak ditemukan.");
-    }
-    savedAttachments.push(await saveAttachmentFile(file));
-  }
 
-  return { data, savedMedia, savedAttachments };
+    for (let i = 0; i < data.attachments.length; i++) {
+      if (!data.attachments[i].hasFile) {
+        const retainedPath = data.attachments[i].filePath;
+        if (retainedPath && !isAllowedExistingPath(retainedPath, allowedExistingPaths)) {
+          throw new MediaUploadError(
+            "Referensi file lampiran tidak valid. Unggah ulang file.",
+          );
+        }
+        savedAttachments.push(null);
+        continue;
+      }
+      const file = formData.get(`attachment_${i}`);
+      if (!(file instanceof File) || file.size === 0) {
+        throw new MediaUploadError("File lampiran tidak ditemukan.");
+      }
+      savedAttachments.push(await saveAttachmentFile(file));
+    }
+
+    return submission;
+  } catch (error) {
+    await cleanupSavedFiles(submission);
+    throw error;
+  }
 }
 
 /** Hapus file dari disk — hanya path di dalam UPLOAD_DIR (cegah traversal). */
+function isAllowedExistingPath(filePath: string, allowedPaths: Set<string>): boolean {
+  const target = resolveLocalUploadPath(filePath);
+  if (!target) return false;
+  for (const allowed of allowedPaths) {
+    if (resolveLocalUploadPath(allowed) === target) return true;
+  }
+  return false;
+}
+
 async function removeStoredFileQuietly(filePath: string): Promise<void> {
   try {
-    const uploadRoot = path.resolve(getUploadDir());
-    const target = path.resolve(filePath);
-    if (target !== uploadRoot && !target.startsWith(`${uploadRoot}${path.sep}`)) {
-      return;
-    }
-    await fs.promises.unlink(target);
+    const target = resolveLocalUploadPath(filePath);
+    if (!target) return;
+    await removeLocalUploadFile(filePath);
   } catch {
     // File mungkin sudah tidak ada — abaikan.
   }
+}
+
+/** Hapus file lama hanya bila tidak direferensikan tabel upload mana pun. */
+async function removeStoredFileIfUnreferenced(filePath: string): Promise<void> {
+  const target = resolveLocalUploadPath(filePath);
+  if (!target) return;
+
+  const [mediaRows, attachmentRows, documentRows] = await Promise.all([
+    db.select({ filePath: knowledgeMedia.filePath }).from(knowledgeMedia),
+    db.select({ filePath: knowledgeAttachments.filePath }).from(knowledgeAttachments),
+    db.select({ filePath: knowledgeDocuments.filePath }).from(knowledgeDocuments),
+  ]);
+  const isReferenced = [...mediaRows, ...attachmentRows, ...documentRows].some(
+    (row) => row.filePath && resolveLocalUploadPath(row.filePath) === target,
+  );
+  if (!isReferenced) await removeLocalUploadFile(filePath);
+}
+
+/**
+ * Cleanup setelah commit tidak boleh menggagalkan action atau menghapus file
+ * baru yang sudah direferensikan DB. Error hanya dicatat tanpa detail rahasia.
+ */
+async function cleanupObsoleteStoredFile(
+  filePath: string,
+  type: "media" | "attachment",
+  faqId: string,
+): Promise<void> {
+  await runBestEffortPostCommitCleanup(
+    () => removeStoredFileIfUnreferenced(filePath),
+    (error) => {
+      console.warn(
+        `[UPLOAD_CLEANUP_FAILED] ${JSON.stringify({
+          type,
+          faqId,
+          filePath,
+          error: error instanceof Error ? error.name : "UnknownError",
+        })}`,
+      );
+    },
+  );
 }
 
 /** Bersihkan file yang baru disimpan bila transaksi FAQ gagal. */
@@ -191,7 +261,7 @@ function buildMediaRows(
         knowledgeId,
         type: "IMAGE",
         caption: m.caption || null,
-        url: null,
+        url: m.url || null,
         filePath: saved.filePath,
         fileName: saved.fileName,
         fileSize: saved.fileSize,
@@ -206,7 +276,7 @@ function buildMediaRows(
         knowledgeId,
         type: m.type,
         caption: m.caption || null,
-        url: null,
+        url: m.url || null,
         filePath: m.filePath,
         fileName: m.fileName ?? null,
         fileSize: m.fileSize ?? null,
@@ -236,46 +306,46 @@ function buildAttachmentRows(
   knowledgeId: string,
   submission: ParsedFaqSubmission,
 ): (typeof knowledgeAttachments.$inferInsert)[] {
-  return submission.data.attachments.flatMap((a, i) => {
+  return submission.data.attachments.map((a, i): typeof knowledgeAttachments.$inferInsert => {
     const saved = submission.savedAttachments[i];
     if (saved) {
-      return [
-        {
-          knowledgeId,
-          title: a.title,
-          type: saved.kind,
-          filePath: saved.filePath,
-          fileName: saved.fileName,
-          fileSize: saved.fileSize,
-          mimeType: saved.mimeType,
-          sortOrder: i,
-        },
-      ];
-    }
-    // Baris lama (edit) — filePath dijamin ada oleh skema.
-    return [
-      {
+      return {
         knowledgeId,
         title: a.title,
-        type: a.type,
-        filePath: a.filePath ?? "",
-        fileName: a.fileName ?? "",
-        fileSize: a.fileSize ?? 0,
-        mimeType: a.mimeType ?? null,
+        type: saved.kind,
+        filePath: saved.filePath,
+        url: a.url || null,
+        fileName: saved.fileName,
+        fileSize: saved.fileSize,
+        mimeType: saved.mimeType,
         sortOrder: i,
-      },
-    ];
+      };
+    }
+    // Baris lama (edit) — filePath dijamin ada oleh skema.
+    return {
+      knowledgeId,
+      title: a.title,
+      type: a.type,
+      filePath: a.filePath ?? null,
+      url: a.url || null,
+      fileName: a.fileName ?? a.title,
+      fileSize: a.fileSize ?? 0,
+      mimeType: a.mimeType ?? null,
+      sortOrder: i,
+    };
   });
 }
 
 /** Kumpulkan semua filePath yang masih terpakai oleh data submit. */
 function collectUsedFilePaths(submission: ParsedFaqSubmission): Set<string> {
   const used = new Set<string>();
-  for (const m of submission.data.media) {
-    if (m.filePath) used.add(m.filePath);
+  for (const [index, media] of submission.data.media.entries()) {
+    if (!submission.savedMedia[index] && media.filePath) used.add(media.filePath);
   }
-  for (const a of submission.data.attachments) {
-    if (a.filePath) used.add(a.filePath);
+  for (const [index, attachment] of submission.data.attachments.entries()) {
+    if (!submission.savedAttachments[index] && attachment.filePath) {
+      used.add(attachment.filePath);
+    }
   }
   for (const saved of submission.savedMedia) {
     if (saved) used.add(saved.filePath);
@@ -635,6 +705,8 @@ export async function createFaq(
           sourceUrl: data.sourceUrl || null,
           status: data.status,
           internalNote: data.internalNote || null,
+          showInMainMenu: data.showInMainMenu,
+          mainMenuOrder: data.mainMenuOrder ?? null,
           // Embedding harus diproses worker.
           embeddingStatus: "PENDING",
           embeddingError: null,
@@ -756,24 +828,9 @@ export async function updateFaq(
 ): Promise<ActionResult> {
   const user = await requireRole("ADMIN", "SUPER_ADMIN");
 
-  // Baca + validasi payload, simpan file media/lampiran baru ke disk.
-  let submission: ParsedFaqSubmission;
-  try {
-    submission = await parseFaqFormData(formData);
-  } catch (error) {
-    if (error instanceof FaqParseError && error.zodError) {
-      return zodFail(error.zodError);
-    }
-    if (error instanceof MediaUploadError) return fail(error.message);
-    throw error;
-  }
-  const data = submission.data;
-
+  // Cek target dan daftar path lama sebelum menulis file baru ke disk.
   const existing = await getFaqForUpdate(id);
   if (!existing) return fail("FAQ tidak ditemukan.");
-
-  // File lama yang tidak lagi dipakai formulir → dihapus dari disk setelah
-  // transaksi berhasil (hindari file yatim).
   const [oldMediaPaths, oldAttachmentPaths] = await Promise.all([
     db
       .select({ filePath: knowledgeMedia.filePath })
@@ -784,14 +841,36 @@ export async function updateFaq(
       .from(knowledgeAttachments)
       .where(eq(knowledgeAttachments.knowledgeId, id)),
   ]);
+  const allowedExistingPaths = new Set(
+    [...oldMediaPaths, ...oldAttachmentPaths]
+      .map((row) => row.filePath)
+      .filter((filePath): filePath is string => Boolean(filePath)),
+  );
+
+  // Baca + validasi payload, simpan file media/lampiran baru ke disk.
+  let submission: ParsedFaqSubmission;
+  try {
+    submission = await parseFaqFormData(formData, allowedExistingPaths);
+  } catch (error) {
+    if (error instanceof FaqParseError && error.zodError) {
+      return zodFail(error.zodError);
+    }
+    if (error instanceof MediaUploadError) return fail(error.message);
+    throw error;
+  }
+  const data = submission.data;
+
+  // File lama yang tidak lagi dipakai formulir → dihapus dari disk setelah
+  // transaksi berhasil (hindari file yatim).
   const usedPaths = collectUsedFilePaths(submission);
 
   const embeddingChanged =
     existing.embeddingStatus === "FAILED" ||
     embeddingFieldsChanged(existing, data);
 
+  let result: ActionResult;
   try {
-    const result = await db.transaction(async (tx) => {
+    result = await db.transaction(async (tx) => {
       const [row] = await tx
         .update(knowledgeItems)
         .set({
@@ -804,6 +883,8 @@ export async function updateFaq(
           sourceUrl: data.sourceUrl || null,
           status: data.status,
           internalNote: data.internalNote || null,
+          showInMainMenu: data.showInMainMenu,
+          mainMenuOrder: data.mainMenuOrder ?? null,
           updatedBy: user.id,
           updatedAt: new Date(),
           ...(embeddingChanged
@@ -900,26 +981,8 @@ export async function updateFaq(
       revalidatePath("/knowledge/faq");
       return ok("FAQ berhasil diperbarui.", row.id);
     });
-
-    if (embeddingChanged) {
-      // Konten embedding berubah → proses antrean ulang.
-      await runEmbeddingQueueAfterSave();
-    }
-
-    // Hapus file lama yang tidak lagi terpakai (di luar transaksi — kegagalan
-    // penghapusan file tidak boleh membatalkan update DB).
-    for (const row of oldMediaPaths) {
-      if (row.filePath && !usedPaths.has(row.filePath)) {
-        await removeStoredFileQuietly(row.filePath);
-      }
-    }
-    for (const row of oldAttachmentPaths) {
-      if (row.filePath && !usedPaths.has(row.filePath)) {
-        await removeStoredFileQuietly(row.filePath);
-      }
-    }
-    return result;
   } catch (error) {
+    // Hanya kegagalan sebelum/selama commit DB yang boleh menghapus file baru.
     await cleanupSavedFiles(submission);
     if (isUniqueViolation(error)) {
       return fail(
@@ -928,6 +991,25 @@ export async function updateFaq(
     }
     throw error;
   }
+
+  if (embeddingChanged) {
+      // Konten embedding berubah → proses antrean ulang.
+    await runEmbeddingQueueAfterSave();
+  }
+
+    // Hapus file lama yang tidak lagi terpakai (di luar transaksi — kegagalan
+    // penghapusan file tidak boleh membatalkan update DB).
+  for (const row of oldMediaPaths) {
+    if (row.filePath && !usedPaths.has(row.filePath)) {
+      await cleanupObsoleteStoredFile(row.filePath, "media", id);
+    }
+  }
+  for (const row of oldAttachmentPaths) {
+    if (row.filePath && !usedPaths.has(row.filePath)) {
+      await cleanupObsoleteStoredFile(row.filePath, "attachment", id);
+    }
+  }
+  return result;
 }
 
 export async function deleteFaq(id: string): Promise<ActionResult> {
@@ -982,4 +1064,38 @@ export async function retryEmbedding(id: string): Promise<ActionResult> {
   // Proses embedding antrean segera (fire-and-forget).
   await runEmbeddingQueueAfterSave();
   return ok("FAQ diantrekan ulang untuk embedding.");
+}
+
+export async function getMenuPreviewAction() {
+  const pmbCategory = await db.query.knowledgeCategories.findFirst({
+    where: eq(knowledgeCategories.slug, "pmb"),
+    columns: { id: true },
+  });
+
+  if (!pmbCategory) {
+    return { success: true, menu: [] };
+  }
+
+  const items = await db.query.knowledgeItems.findMany({
+    where: and(
+      eq(knowledgeItems.categoryId, pmbCategory.id),
+      eq(knowledgeItems.status, "ACTIVE"),
+      eq(knowledgeItems.showInMainMenu, true),
+      isNull(knowledgeItems.deletedAt)
+    ),
+    orderBy: [asc(knowledgeItems.mainMenuOrder), asc(knowledgeItems.id)],
+    columns: {
+      id: true,
+      question: true,
+      mainMenuOrder: true,
+    }
+  });
+
+  const menu = items.map((it) => ({
+    id: it.id,
+    question: it.question,
+    menuOrder: it.mainMenuOrder,
+  }));
+
+  return { success: true, menu };
 }

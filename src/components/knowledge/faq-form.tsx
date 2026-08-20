@@ -3,10 +3,10 @@
 import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useForm, useFieldArray, Controller } from "react-hook-form";
+import { useForm, useFieldArray, useWatch, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { ImageIcon, Loader2, Paperclip, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ImageIcon, Loader2, Paperclip, Plus, Trash2 } from "lucide-react";
 import {
   faqFormSchema,
   type FaqFormInput,
@@ -21,6 +21,8 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { FaqAiAssistant } from "@/components/knowledge/faq-ai-assistant";
 import {
   Select,
   SelectContent,
@@ -153,6 +155,8 @@ export function FaqForm({
       sourceUrl: "",
       status: "DRAFT",
       internalNote: "",
+      showInMainMenu: false,
+      mainMenuOrder: null,
       alternatives: [],
       sources: [],
       relatedQuestions: [],
@@ -161,15 +165,18 @@ export function FaqForm({
     },
   });
 
+  const watchedQuestion = useWatch({ control, name: "question" }) ?? "";
+  const watchedAnswer = useWatch({ control, name: "answer" }) ?? "";
+
   const { fields: alternativeFields, append: appendAlternative, remove: removeAlternative } =
     useFieldArray({ control, name: "alternatives" });
-  const { fields: sourceFields, append: appendSource, remove: removeSource } =
+  const { fields: sourceFields, append: appendSource, remove: removeSource, move: moveSource } =
     useFieldArray({ control, name: "sources" });
   const { fields: relatedFields, append: appendRelated, remove: removeRelated } =
     useFieldArray({ control, name: "relatedQuestions" });
-  const { fields: mediaFields, append: appendMedia, remove: removeMedia } =
+  const { fields: mediaFields, append: appendMedia, remove: removeMedia, move: moveMedia } =
     useFieldArray({ control, name: "media" });
-  const { fields: attachmentFields, append: appendAttachment, remove: removeAttachment } =
+  const { fields: attachmentFields, append: appendAttachment, remove: removeAttachment, move: moveAttachment } =
     useFieldArray({ control, name: "attachments" });
 
   // File terpilih untuk baris media/lampiran — dikunci per field.id agar tetap
@@ -253,7 +260,9 @@ export function FaqForm({
     );
     setValue(
       "attachments",
-      (getValues("attachments") ?? []).filter((a) => a.hasFile || a.filePath != null),
+      (getValues("attachments") ?? []).filter(
+        (a) => a.hasFile || a.filePath != null || (a.url ?? "").trim().length > 0,
+      ),
     );
 
     void handleSubmit(async (values) => {
@@ -319,6 +328,57 @@ export function FaqForm({
                 <p className="text-sm text-destructive">{errors.answer.message}</p>
               )}
             </div>
+
+            <FaqAiAssistant
+              faqId={faqId}
+              question={watchedQuestion}
+              answer={watchedAnswer}
+              onUseAnswer={(value) =>
+                setValue("answer", value, {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                })
+              }
+              onUseVariations={(values) => {
+                const existing = getValues("alternatives") ?? [];
+                const seen = new Set(
+                  existing.map((item) => item.question.toLowerCase()),
+                );
+                setValue(
+                  "alternatives",
+                  [
+                    ...existing,
+                    ...values
+                      .filter((value) => !seen.has(value.toLowerCase()))
+                      .map((question) => ({ question })),
+                  ].slice(0, 20),
+                  { shouldDirty: true },
+                );
+              }}
+              onUseKeywords={(values) => {
+                setKeywordsText(values.join(", "));
+                setValue("keywords", values, { shouldDirty: true });
+              }}
+              onUseRelated={(values) => {
+                const existing = getValues("relatedQuestions") ?? [];
+                const seen = new Set(
+                  existing.map((item) => item.relatedKnowledgeId),
+                );
+                setValue(
+                  "relatedQuestions",
+                  [
+                    ...existing,
+                    ...values
+                      .filter((value) => !seen.has(value.faqId))
+                      .map((value) => ({
+                        relatedKnowledgeId: value.faqId,
+                        question: value.question,
+                      })),
+                  ].slice(0, 20),
+                  { shouldDirty: true },
+                );
+              }}
+            />
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -432,6 +492,53 @@ export function FaqForm({
               </div>
             </div>
 
+            <div className="grid gap-4 sm:grid-cols-2 rounded-md border p-4 bg-muted/50">
+              <div className="flex flex-row items-start space-x-3 space-y-0 p-2">
+                <Controller
+                  control={control}
+                  name="showInMainMenu"
+                  render={({ field }) => (
+                    <Checkbox
+                      id="showInMainMenu"
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  )}
+                />
+                <div className="space-y-1 leading-none">
+                  <Label htmlFor="showInMainMenu" className="font-medium cursor-pointer">
+                    Tampilkan di Menu Utama
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    Ceklis agar FAQ ini muncul di menu awal chatbot (hanya efektif jika kategori PMB).
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="mainMenuOrder">Urutan Menu</Label>
+                <Controller
+                  control={control}
+                  name="mainMenuOrder"
+                  render={({ field }) => (
+                    <Input
+                      id="mainMenuOrder"
+                      type="number"
+                      placeholder="Contoh: 1, 2, 3..."
+                      value={field.value ?? ""}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        field.onChange(isNaN(val) ? null : val);
+                      }}
+                    />
+                  )}
+                />
+                {errors.mainMenuOrder && (
+                  <p className="text-sm text-destructive">{errors.mainMenuOrder.message}</p>
+                )}
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="keywords">Kata kunci</Label>
               <Input
@@ -530,6 +637,13 @@ export function FaqForm({
                         )}
                       />
                     </div>
+                    <div className="flex shrink-0">
+                      <Button type="button" variant="ghost" size="icon-sm" disabled={index === 0} onClick={() => moveSource(index, index - 1)} aria-label="Naikkan sumber">
+                        <ArrowUp className="size-4" />
+                      </Button>
+                      <Button type="button" variant="ghost" size="icon-sm" disabled={index === sourceFields.length - 1} onClick={() => moveSource(index, index + 1)} aria-label="Turunkan sumber">
+                        <ArrowDown className="size-4" />
+                      </Button>
                     <Button
                       type="button"
                       variant="ghost"
@@ -539,6 +653,7 @@ export function FaqForm({
                     >
                       <Trash2 className="size-4 text-destructive" />
                     </Button>
+                    </div>
                   </div>
                   <Input
                     type="url"
@@ -718,6 +833,13 @@ export function FaqForm({
                           {...register(`media.${index}.url` as const)}
                         />
                       </div>
+                      <div className="flex shrink-0">
+                        <Button type="button" variant="ghost" size="icon-sm" disabled={index === 0} onClick={() => moveMedia(index, index - 1)} aria-label="Naikkan media">
+                          <ArrowUp className="size-4" />
+                        </Button>
+                        <Button type="button" variant="ghost" size="icon-sm" disabled={index === mediaFields.length - 1} onClick={() => moveMedia(index, index + 1)} aria-label="Turunkan media">
+                          <ArrowDown className="size-4" />
+                        </Button>
                       <Button
                         type="button"
                         variant="ghost"
@@ -727,6 +849,7 @@ export function FaqForm({
                       >
                         <Trash2 className="size-4 text-destructive" />
                       </Button>
+                      </div>
                     </div>
 
                     {row.type === "IMAGE" && (
@@ -788,7 +911,7 @@ export function FaqForm({
                 size="sm"
                 disabled={attachmentFields.length >= 20}
                 onClick={() =>
-                  appendAttachment({ title: "", type: "PDF", hasFile: false })
+                  appendAttachment({ title: "", type: "PDF", url: "", hasFile: false })
                 }
               >
                 <Paperclip className="size-4" /> Tambah Lampiran
@@ -839,6 +962,13 @@ export function FaqForm({
                           )}
                         />
                       </div>
+                      <div className="flex shrink-0">
+                        <Button type="button" variant="ghost" size="icon-sm" disabled={index === 0} onClick={() => moveAttachment(index, index - 1)} aria-label="Naikkan lampiran">
+                          <ArrowUp className="size-4" />
+                        </Button>
+                        <Button type="button" variant="ghost" size="icon-sm" disabled={index === attachmentFields.length - 1} onClick={() => moveAttachment(index, index + 1)} aria-label="Turunkan lampiran">
+                          <ArrowDown className="size-4" />
+                        </Button>
                       <Button
                         type="button"
                         variant="ghost"
@@ -848,6 +978,7 @@ export function FaqForm({
                       >
                         <Trash2 className="size-4 text-destructive" />
                       </Button>
+                      </div>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
@@ -873,6 +1004,13 @@ export function FaqForm({
                           (row.fileName ? `File saat ini: ${row.fileName}` : "PDF/DOC/DOCX/XLS/XLSX · maks. 15 MB")}
                       </span>
                     </div>
+
+                    <Input
+                      type="url"
+                      placeholder="URL file eksternal (opsional)"
+                      aria-invalid={!!fieldArrayError(errors, "attachments", index, "url")}
+                      {...register(`attachments.${index}.url` as const)}
+                    />
 
                     {fieldArrayError(errors, "attachments", index, "title") && (
                       <p className="text-sm text-destructive">

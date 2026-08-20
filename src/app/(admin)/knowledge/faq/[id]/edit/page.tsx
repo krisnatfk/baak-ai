@@ -31,12 +31,18 @@ export default async function EditFaqPage({ params }: EditFaqPageProps) {
         sourceUrl: true,
         status: true,
         internalNote: true,
+        showInMainMenu: true,
+        mainMenuOrder: true,
       },
       with: {
         alternatives: { columns: { question: true } },
-        itemSources: { columns: { title: true, type: true, url: true } },
+        itemSources: {
+          columns: { title: true, type: true, url: true },
+          orderBy: (t, { asc }) => asc(t.sortOrder),
+        },
         relatedQuestions: {
           columns: { relatedKnowledgeId: true, question: true },
+          orderBy: (t, { asc }) => asc(t.sortOrder),
         },
         media: {
           columns: {
@@ -49,6 +55,7 @@ export default async function EditFaqPage({ params }: EditFaqPageProps) {
             fileSize: true,
             mimeType: true,
           },
+          orderBy: (t, { asc }) => asc(t.sortOrder),
         },
         attachments: {
           columns: {
@@ -59,7 +66,9 @@ export default async function EditFaqPage({ params }: EditFaqPageProps) {
             fileName: true,
             fileSize: true,
             mimeType: true,
+            url: true,
           },
+          orderBy: (t, { asc }) => asc(t.sortOrder),
         },
       },
     }),
@@ -96,6 +105,8 @@ export default async function EditFaqPage({ params }: EditFaqPageProps) {
     sourceUrl: faq.sourceUrl ?? "",
     status: faq.status,
     internalNote: faq.internalNote ?? "",
+    showInMainMenu: faq.showInMainMenu,
+    mainMenuOrder: faq.mainMenuOrder,
     alternatives: faq.alternatives.map((a) => ({ question: a.question })),
     sources: faq.itemSources.map((s) => ({
       title: s.title,
@@ -126,6 +137,7 @@ export default async function EditFaqPage({ params }: EditFaqPageProps) {
       fileName: a.fileName,
       fileSize: a.fileSize,
       mimeType: a.mimeType,
+      url: a.url ?? "",
       hasFile: false,
     })),
   };

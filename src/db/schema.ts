@@ -159,6 +159,39 @@ export const faqImportRowStatusEnum = pgEnum("faq_import_row_status", [
   "DUPLICATE",
 ]);
 
+export const botMenuModeEnum = pgEnum("bot_menu_mode", [
+  "MANUAL",
+  "POPULAR",
+  "HYBRID",
+]);
+
+export const botStatusEnum = pgEnum("bot_status", [
+  "ACTIVE",
+  "MAINTENANCE",
+  "LIMITED",
+]);
+
+export const botMessageRuleTypeEnum = pgEnum("bot_message_rule_type", [
+  "GREETING",
+  "NOISE",
+]);
+
+export const botEventTypeEnum = pgEnum("bot_event_type", [
+  "GREETING",
+  "MENU_SELECTION",
+  "QUESTION",
+  "RAG_FOUND",
+  "RAG_NOT_FOUND",
+  "SIMILAR_SUGGESTION",
+  "FAQ_MATCH",
+]);
+
+export const botAnswerStyleEnum = pgEnum("bot_answer_style", [
+  "SINGKAT",
+  "NORMAL",
+  "LENGKAP",
+]);
+
 // ---------------------------------------------------------------------------
 // Helper kolom
 // ---------------------------------------------------------------------------
@@ -273,6 +306,10 @@ export const knowledgeItems = pgTable(
     sourceUrl: text("source_url"),
     status: knowledgeStatusEnum("status").notNull().default("DRAFT"),
     internalNote: text("internal_note"),
+
+    // ---- Fitur Bot Menu Khusus PMB ----
+    showInMainMenu: boolean("show_in_main_menu").notNull().default(false),
+    mainMenuOrder: integer("main_menu_order"),
 
     // ---- Embedding ----
     embedding: vector("embedding", { dimensions: getEmbeddingDimension() }),
@@ -606,6 +643,8 @@ export const chatSessions = pgTable(
     channel: varchar("channel", { length: 30 }).notNull().default("WHATSAPP"),
     topic: varchar("topic", { length: 150 }),
     messageCount: integer("message_count").notNull().default(0),
+    consecutiveUnanswered: integer("consecutive_unanswered").notNull().default(0),
+    handoffShownAt: timestamp("handoff_shown_at", { withTimezone: true }),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
     status: chatSessionStatusEnum("status").notNull().default("ACTIVE"),
     ...timestamps,
@@ -737,6 +776,117 @@ export const retrievalLogs = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// 13b. bot_settings â€” singleton control center runtime PMB
+// ---------------------------------------------------------------------------
+
+export const botSettings = pgTable("bot_settings", {
+  id: varchar("id", { length: 32 }).primaryKey().default("default"),
+  botName: varchar("bot_name", { length: 150 }).notNull().default("Asisten PMB"),
+  institutionName: varchar("institution_name", { length: 255 })
+    .notNull()
+    .default("Universitas Teknokrat Indonesia"),
+  userCallName: varchar("user_call_name", { length: 50 }).notNull().default("Kak"),
+  welcomeEnabled: boolean("welcome_enabled").notNull().default(true),
+  welcomeIntro: text("welcome_intro").notNull(),
+  welcomeClosing: text("welcome_closing").notNull(),
+  includeMenu: boolean("include_menu").notNull().default(true),
+  emojiEnabled: boolean("emoji_enabled").notNull().default(true),
+  smartGreetingEnabled: boolean("smart_greeting_enabled").notNull().default(true),
+  fuzzyGreetingEnabled: boolean("fuzzy_greeting_enabled").notNull().default(true),
+  semanticGreetingEnabled: boolean("semantic_greeting_enabled").notNull().default(true),
+  stripGreetingFromQuestion: boolean("strip_greeting_from_question")
+    .notNull()
+    .default(true),
+  greetingSimilarityThreshold: numeric("greeting_similarity_threshold", {
+    precision: 6,
+    scale: 4,
+  })
+    .notNull()
+    .default("0.8000"),
+  greetingModifiers: text("greeting_modifiers")
+    .notNull()
+    .default("kak,kaka,min,admin,mimin,mas,mba,mbak,pak,bu,bro,gan"),
+  menuMode: botMenuModeEnum("menu_mode").notNull().default("MANUAL"),
+  popularPeriodDays: integer("popular_period_days").notNull().default(30),
+  menuLimit: integer("menu_limit").notNull().default(10),
+  menuFinalLabel: varchar("menu_final_label", { length: 255 }),
+  similarityEnabled: boolean("similarity_enabled").notNull().default(true),
+  similarityHigh: numeric("similarity_high", { precision: 6, scale: 4 })
+    .notNull()
+    .default("0.7000"),
+  similarityMedium: numeric("similarity_medium", { precision: 6, scale: 4 })
+    .notNull()
+    .default("0.5500"),
+  similaritySuggestionEnabled: boolean("similarity_suggestion_enabled")
+    .notNull()
+    .default(true),
+  similarityMaxSuggestions: integer("similarity_max_suggestions")
+    .notNull()
+    .default(5),
+  notFoundMessage: text("not_found_message").notNull(),
+  showSuggestionsOnNotFound: boolean("show_suggestions_on_not_found")
+    .notNull()
+    .default(true),
+  showMenuOnNotFound: boolean("show_menu_on_not_found").notNull().default(true),
+  status: botStatusEnum("status").notNull().default("ACTIVE"),
+  maintenanceMessage: text("maintenance_message").notNull(),
+  humanHandoffEnabled: boolean("human_handoff_enabled").notNull().default(true),
+  humanHandoffMessage: text("human_handoff_message").notNull().default(""),
+  humanHandoffUrl: text("human_handoff_url"),
+  humanHandoffPhone: varchar("human_handoff_phone", { length: 50 }),
+  humanHandoffAfterUnanswered: integer("human_handoff_after_unanswered")
+    .notNull()
+    .default(1),
+  answerStyle: botAnswerStyleEnum("answer_style").notNull().default("NORMAL"),
+  answerTone: varchar("answer_tone", { length: 50 }).notNull().default("RAMAH_PMB"),
+  updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+  ...timestamps,
+});
+
+export const botMessageRules = pgTable(
+  "bot_message_rules",
+  {
+    id: uuidPrimaryKey(),
+    type: botMessageRuleTypeEnum("type").notNull(),
+    phrase: varchar("phrase", { length: 255 }).notNull(),
+    normalizedPhrase: varchar("normalized_phrase", { length: 255 }).notNull(),
+    reply: text("reply"),
+    isActive: boolean("is_active").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("bot_message_rules_type_phrase_unique").on(
+      t.type,
+      t.normalizedPhrase,
+    ),
+    index("bot_message_rules_active_idx").on(t.isActive),
+  ],
+);
+
+export const botAnalyticsEvents = pgTable(
+  "bot_analytics_events",
+  {
+    id: uuidPrimaryKey(),
+    type: botEventTypeEnum("type").notNull(),
+    normalizedQuestion: text("normalized_question"),
+    route: varchar("route", { length: 20 }),
+    matchedFaqId: uuid("matched_faq_id").references(() => knowledgeItems.id, {
+      onDelete: "set null",
+    }),
+    confidence: varchar("confidence", { length: 20 }),
+    score: numeric("score", { precision: 6, scale: 4 }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [
+    index("bot_analytics_events_created_at_idx").on(t.createdAt),
+    index("bot_analytics_events_type_idx").on(t.type),
+    index("bot_analytics_events_matched_faq_idx").on(t.matchedFaqId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // 14. audit_logs
 // ---------------------------------------------------------------------------
 
@@ -798,4 +948,7 @@ export type ChatMessage = typeof chatMessages.$inferSelect;
 export type UnansweredQuestion = typeof unansweredQuestions.$inferSelect;
 export type HumanHandoff = typeof humanHandoffs.$inferSelect;
 export type RetrievalLog = typeof retrievalLogs.$inferSelect;
+export type BotSetting = typeof botSettings.$inferSelect;
+export type BotMessageRule = typeof botMessageRules.$inferSelect;
+export type BotAnalyticsEvent = typeof botAnalyticsEvents.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;

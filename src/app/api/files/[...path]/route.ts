@@ -18,8 +18,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { getUploadDir } from "@/lib/env";
 import { INLINE_EXTENSIONS } from "@/lib/server/media-upload";
+import { getLocalUploadFile } from "@/lib/server/upload-storage";
 
 export const dynamic = "force-dynamic";
 
@@ -57,7 +57,6 @@ export async function GET(
     }
   }
 
-  const uploadRoot = path.resolve(getUploadDir());
   const requested = segments.map((s) => {
     try {
       return decodeURIComponent(s);
@@ -66,30 +65,24 @@ export async function GET(
     }
   });
 
-  // Jika ada yang masih mengandung pemisah setelah decode, tolak.
-  const joined = requested.join("/");
-  if (joined.includes("/") || joined.includes("\\")) {
+  // Jika satu segmen masih mengandung pemisah setelah decode, tolak.
+  if (requested.some((segment) => segment.includes("/") || segment.includes("\\"))) {
     return new Response("Not Found", { status: 404 });
   }
 
-  const target = path.resolve(uploadRoot, ...requested);
-  if (target !== uploadRoot && !target.startsWith(`${uploadRoot}${path.sep}`)) {
+  const file = await getLocalUploadFile(requested.join("/"));
+  if (!file) {
     return new Response("Not Found", { status: 404 });
   }
+  const data = await fs.promises.readFile(file.absolutePath).catch(() => null);
+  if (!data) return new Response("Not Found", { status: 404 });
 
-  let data: Buffer;
-  try {
-    data = await fs.promises.readFile(target);
-  } catch {
-    return new Response("Not Found", { status: 404 });
-  }
-
-  const ext = path.extname(target).toLowerCase();
+  const ext = path.extname(file.absolutePath).toLowerCase();
   const mimeType = MIME_BY_EXT[ext] ?? "application/octet-stream";
   const isInline = INLINE_EXTENSIONS.has(ext);
 
   // Nama file fisik (sudah aman: slug+timestamp+random) untuk Content-Disposition.
-  const baseName = path.basename(target);
+  const baseName = path.basename(file.absolutePath);
   const disposition = isInline
     ? "inline"
     : `attachment; filename="${baseName.replace(/["\\]/g, "_")}"`;

@@ -16,8 +16,6 @@
 
 import "server-only";
 import { revalidatePath } from "next/cache";
-import fs from "node:fs";
-import path from "node:path";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import {
@@ -25,11 +23,11 @@ import {
   knowledgeDocuments,
   knowledgeSources,
 } from "@/db/schema";
-import { getUploadDir } from "@/lib/env";
 import { logAudit } from "@/lib/audit";
 import { requireRole } from "@/lib/guards";
 import { uploadDocumentSchema } from "@/lib/documents-schema";
 import { saveUpload, UploadError } from "@/lib/server/upload";
+import { removeLocalUploadFile } from "@/lib/server/upload-storage";
 import { extractTextFromBuffer } from "@/services/document/extract";
 import { chunkText, type Chunk } from "@/services/document/chunk";
 import { processEmbeddingQueue } from "@/services/embedding/worker";
@@ -273,12 +271,7 @@ export async function deleteDocument(id: string): Promise<ActionResult> {
 /** Hapus file dari disk — hanya path di dalam UPLOAD_DIR (cegah traversal). */
 async function removeStoredFile(relativePath: string): Promise<void> {
   try {
-    const uploadRoot = path.resolve(getUploadDir());
-    const target = path.resolve(relativePath);
-    if (target !== uploadRoot && !target.startsWith(`${uploadRoot}${path.sep}`)) {
-      return;
-    }
-    await fs.promises.unlink(target);
+    await removeLocalUploadFile(relativePath);
   } catch {
     // File mungkin sudah tidak ada — abaikan.
   }

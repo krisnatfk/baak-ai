@@ -6,11 +6,11 @@ function faq(overrides: Partial<SearchResult> = {}): SearchResult {
   return {
     id: "faq-1",
     type: "FAQ",
-    question: "Bagaimana cara mendaftar PKL?",
-    answer: "Daftar melalui portal akademik.",
-    category: "PKL",
-    source: null,
-    url: null,
+    question: "Bagaimana cara mendaftar di Universitas Teknokrat Indonesia?",
+    answer: "Daftar melalui portal https://spmb.teknokrat.ac.id.",
+    category: "Pendaftaran",
+    source: "SPMB Universitas Teknokrat Indonesia",
+    url: "https://spmb.teknokrat.ac.id",
     score: 0.82,
     ...overrides,
   };
@@ -20,24 +20,25 @@ function chunk(overrides: Partial<SearchResult> = {}): SearchResult {
   return {
     id: "chunk-1",
     type: "CHUNK",
-    answer: "Persyaratan administratif dijelaskan pada pedoman.",
-    source: "Pedoman Akademik 2026",
-    url: "https://example.com/pedoman",
+    answer: "Persyaratan pendaftaran dijelaskan pada pedoman PMB.",
+    source: "Pedoman PMB 2026",
+    url: "https://spmb.teknokrat.ac.id/pedoman",
     score: 0.6,
     ...overrides,
   };
 }
 
 describe("buildRagContext", () => {
-  it("memuat blok sumber, pertanyaan, dan aturan anti-halusinasi", () => {
+  it("memuat blok sumber, pertanyaan, dan aturan anti-halusinasi PMB", () => {
     const context = buildRagContext([faq(), chunk()]);
     expect(context).toContain("Sumber 1:");
-    expect(context).toContain("[FAQ] Bagaimana cara mendaftar PKL?");
+    expect(context).toContain("[FAQ] Bagaimana cara mendaftar di Universitas Teknokrat Indonesia?");
     expect(context).toContain("Sumber 2:");
-    expect(context).toContain("[Dokumen] Pedoman Akademik 2026");
+    expect(context).toContain("[Dokumen] Pedoman PMB 2026");
     expect(context).toContain("=== KNOWLEDGE BASE ===");
     expect(context).toContain("=== AKHIR KNOWLEDGE BASE ===");
-    expect(context).toContain("HANYA informasi dari blok KNOWLEDGE BASE");
+    expect(context).toContain("HANYA informasi yang terdapat pada KNOWLEDGE BASE");
+    expect(context).toContain("Penerimaan Mahasiswa Baru (PMB) Universitas Teknokrat Indonesia");
   });
 
   it("TIDAK mengungkap skor kemiripan ke prompt", () => {
@@ -59,9 +60,32 @@ describe("buildRagContext", () => {
     expect(context).not.toContain("Catatan:");
   });
 
-  it("aturan tidak memaksa arah ke BAAK (hanya bila perlu)", () => {
+  it("aturan mengarahkan ke panitia PMB / admin Teknokrat", () => {
     const context = buildRagContext([faq()]);
-    expect(context).toContain("bila perlu");
+    expect(context).toContain("panitia PMB / admin Universitas Teknokrat Indonesia");
+  });
+
+  it("memberi tahu model saat aset relevan akan dikirim setelah jawaban", () => {
+    const context = buildRagContext(
+      [faq({ answer: "Silakan cek brosur di bawah ini." })],
+      {
+        media: [{ caption: "Brosur Gelombang 2" }],
+        attachments: [
+          { title: "Jadwal PMB", fileName: "jadwal-pmb.pdf" },
+        ],
+      },
+    );
+
+    expect(context).toContain("=== ASET TERLAMPIR ===");
+    expect(context).toContain("Gambar 1: Brosur Gelombang 2");
+    expect(context).toContain("Lampiran 1: Jadwal PMB (jadwal-pmb.pdf)");
+    expect(context).toContain("JANGAN mengatakan informasi tidak tersedia");
+    expect(context).not.toContain("/api/files/");
+  });
+
+  it("tidak menambahkan blok aset bila media dan lampiran kosong", () => {
+    const context = buildRagContext([faq()], { media: [], attachments: [] });
+    expect(context).not.toContain("=== ASET TERLAMPIR ===");
   });
 
   it("tidak ada blok hasil → instruksi jangan berasumsi", () => {

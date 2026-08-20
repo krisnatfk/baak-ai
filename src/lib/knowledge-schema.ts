@@ -129,10 +129,13 @@ export const faqAttachmentSchema = z
     fileName: z.string().trim().max(255).optional().nullable(),
     fileSize: z.number().int().nonnegative().optional().nullable(),
     mimeType: z.string().trim().max(100).optional().nullable(),
+    url: z
+      .union([z.string().trim().url("URL tidak valid."), z.literal("")])
+      .default(""),
     hasFile: z.boolean().default(false),
   })
-  .refine((value) => value.hasFile || value.filePath != null, {
-    message: "Unggah file lampiran.",
+  .refine((value) => value.hasFile || value.filePath != null || value.url.length > 0, {
+    message: "Unggah file lampiran atau isi URL eksternal.",
     path: ["title"],
   });
 export type FaqAttachmentValues = z.infer<typeof faqAttachmentSchema>;
@@ -158,6 +161,8 @@ export const faqFormSchema = z.object({
     .default(""),
   status: z.enum(["DRAFT", "ACTIVE", "INACTIVE", "NEEDS_REVIEW"]),
   internalNote: z.string().trim().max(4000, "Maksimal 4000 karakter.").default(""),
+  showInMainMenu: z.boolean().default(false),
+  mainMenuOrder: z.number().int().positive("Urutan harus positif").optional().nullable(),
   alternatives: z
     .array(
       z.object({

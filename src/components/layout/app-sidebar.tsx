@@ -12,6 +12,7 @@ import {
   MessageCircleQuestion,
   MessagesSquare,
   ScrollText,
+  Settings2,
   UserCheck,
   Users,
 } from "lucide-react";
@@ -80,6 +81,12 @@ const NAV_SECTIONS: Array<{ label: string; items: NavItem[] }> = [
     items: [
       { title: "Analitik", href: "/analytics", icon: BarChart3 },
       {
+        title: "Pengaturan Bot PMB",
+        href: "/bot-settings",
+        icon: Settings2,
+        roles: ["SUPER_ADMIN", "ADMIN", "VIEWER"],
+      },
+      {
         title: "Audit Log",
         href: "/audit",
         icon: ScrollText,
@@ -128,9 +135,9 @@ export function AppSidebar({
                   <GraduationCap className="size-4" />
                 </div>
                 <div className="flex flex-col gap-0.5 leading-none">
-                  <span className="font-semibold">BAAK AI</span>
+                  <span className="font-semibold">PMB AI</span>
                   <span className="text-xs text-muted-foreground">
-                    Knowledge & Admin
+                    Teknokrat PMB Admin
                   </span>
                 </div>
               </Link>

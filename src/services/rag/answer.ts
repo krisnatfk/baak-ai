@@ -1,27 +1,14 @@
-/**
- * Pelengkap jawaban RAG yang diambil HANYA dari database (bukan buatan LLM):
- * sumber resmi, pertanyaan terkait/saran, media, dan lampiran.
- *
- * Server-only (memuat db + media-upload). Dipakai oleh /api/rag/context.
- *  - sumber resmi: hasil pencarian + tabel knowledge_item_sources (per FAQ).
- *  - saran: relasi eksplisit > kategori sama > kemiripan semantik.
- *  - media/lampiran: hanya untuk FAQ teratas; URL dibangun dari filePath
- *    (via /api/files/...) atau URL eksternal admin. Tidak ada base64.
- */
-
-import { and, asc, eq, inArray, isNull, ne } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import {
   knowledgeAttachments,
   knowledgeItemSources,
-  knowledgeItems,
   knowledgeMedia,
-  knowledgeRelatedQuestions,
 } from "@/db/schema";
+import { getRagConfig } from "@/lib/env";
 import { fileUrlFromPath } from "@/lib/server/media-upload";
 import type { SearchResult } from "./search";
 
-/** Referensi sumber (metadata) yang dikirim ke n8n untuk sitasi. */
 export interface RagSourceRef {
   id: string;
   type: "FAQ" | "CHUNK";
@@ -30,17 +17,17 @@ export interface RagSourceRef {
   score: number;
 }
 
-/** Pertanyaan terkait yang disarankan (dari KB, bukan dari LLM). */
 export interface RagSuggestion {
-  /** ID FAQ terkait (null untuk teks bebas yang dipilih admin). */
-  id: string | null;
+  /** `id` dipertahankan untuk konsumen lama; `faqId` kontrak baru. */
+  id: string;
+  faqId: string;
   question: string;
+  score: number;
 }
 
 export interface RagMediaItem {
   type: "IMAGE" | "VIDEO" | "OTHER";
   caption: string | null;
-  /** URL publik yang bisa diakses bot (via /api/files/... atau URL eksternal). */
   url: string;
 }
 
@@ -60,16 +47,17 @@ export interface RagAnswer {
   attachments: RagAttachmentItem[];
 }
 
-const SUGGESTION_LIMIT = 5;
+export interface RagAnswerOptions {
+  thresholdMedium?: number;
+  suggestionEnabled?: boolean;
+  maxSuggestions?: number;
+}
 
-/** Sumber rujukan resmi: hasil pencarian + sumber per-FAQ (dedupe, dari DB). */
 async function buildOfficialSources(results: SearchResult[]): Promise<RagSourceRef[]> {
   const refs: RagSourceRef[] = [];
   const seen = new Set<string>();
-
-  // Ambil sumber resmi per-FAQ sekaligus (satu query untuk semua FAQ hasil).
-  const faqIds = results.filter((r) => r.type === "FAQ").map((r) => r.id);
-  const itemSourcesByFaq = new Map<string, { title: string; url: string | null }[]>();
+  const faqIds = results.filter((result) => result.type === "FAQ").map((result) => result.id);
+  const itemSourcesByFaq = new Map<string, Array<{ title: string; url: string | null }>>();
   if (faqIds.length > 0) {
     const rows = await db
       .select({
@@ -87,121 +75,95 @@ async function buildOfficialSources(results: SearchResult[]): Promise<RagSourceR
     }
   }
 
-  for (const r of results) {
-    const refKey = `${r.type}:${r.id}`;
-    if (!seen.has(refKey)) {
-      seen.add(refKey);
+  for (const result of results) {
+    const resultKey = `${result.type}:${result.id}`;
+    if (!seen.has(resultKey)) {
+      seen.add(resultKey);
       refs.push({
-        id: r.id,
-        type: r.type,
-        title: r.type === "CHUNK" ? r.source ?? "Dokumen" : r.question ?? "FAQ",
-        url: r.url ?? null,
-        score: r.score,
+        id: result.id,
+        type: result.type,
+        title:
+          result.type === "CHUNK"
+            ? result.source ?? "Dokumen"
+            : result.question ?? "FAQ",
+        url: result.url ?? null,
+        score: result.score,
       });
     }
-    if (r.type === "FAQ") {
-      for (const s of itemSourcesByFaq.get(r.id) ?? []) {
-        const itemKey = `item:${s.title}|${s.url ?? ""}`;
-        if (seen.has(itemKey)) continue;
-        seen.add(itemKey);
+    if (result.type === "FAQ") {
+      for (const source of itemSourcesByFaq.get(result.id) ?? []) {
+        const sourceKey = `item:${source.title}|${source.url ?? ""}`;
+        if (seen.has(sourceKey)) continue;
+        seen.add(sourceKey);
         refs.push({
-          id: r.id,
+          id: result.id,
           type: "FAQ",
-          title: s.title,
-          url: s.url || null,
-          score: r.score,
+          title: source.title,
+          url: source.url || null,
+          score: result.score,
         });
       }
     }
   }
-
   return refs;
 }
 
-/**
- * Pertanyaan terkait untuk jawaban teratas, prioritas:
- * 1) relasi eksplisit yang dipilih admin (knowledge_related_questions);
- * 2) FAQ aktif lain pada kategori yang sama;
- * 3) FAQ lain yang relevan secara semantik (hasil pencarian).
- * Selalu dedupe dan batasi, tanpa melibatkan LLM.
- */
-async function buildSuggestions(
+/** Suggestions hanya berasal dari kandidat semantic PMB yang sudah difilter search. */
+export async function buildSemanticSuggestions(
   top: SearchResult,
   results: SearchResult[],
+  options: RagAnswerOptions = {},
 ): Promise<RagSuggestion[]> {
-  const suggestions: RagSuggestion[] = [];
+  if (options.suggestionEnabled === false) return [];
+  const limit = Math.max(0, Math.min(options.maxSuggestions ?? 5, 10));
   const seen = new Set<string>();
-
-  const push = (id: string | null, question: string | null | undefined) => {
-    const q = (question ?? "").trim();
-    if (!q || seen.has(q)) return;
-    seen.add(q);
-    suggestions.push({ id, question: q });
-  };
-
-  if (top.type === "FAQ") {
-    // 1) Relasi eksplisit (urutan admin).
-    const relations = await db.query.knowledgeRelatedQuestions.findMany({
-      where: eq(knowledgeRelatedQuestions.knowledgeId, top.id),
-      columns: { relatedKnowledgeId: true, question: true },
-      orderBy: (t, { asc }) => asc(t.sortOrder),
+  const suggestions: RagSuggestion[] = [];
+  for (const result of results) {
+    const question = result.question?.trim();
+    const normalized = question?.toLocaleLowerCase("id-ID");
+    if (
+      result.type !== "FAQ" ||
+      result.id === top.id ||
+      !question ||
+      !normalized ||
+      seen.has(normalized)
+    ) continue;
+    seen.add(normalized);
+    suggestions.push({
+      id: result.id,
+      faqId: result.id,
+      question,
+      score: Number(result.score.toFixed(4)),
     });
-    for (const rel of relations) push(rel.relatedKnowledgeId, rel.question);
-
-    // 2) Kategori sama (FAQ aktif lain, urut abjad).
-    const topFaq = await db.query.knowledgeItems.findFirst({
-      where: and(eq(knowledgeItems.id, top.id), isNull(knowledgeItems.deletedAt)),
-      columns: { id: true, categoryId: true },
-    });
-    if (topFaq?.categoryId) {
-      const sameCategory = await db.query.knowledgeItems.findMany({
-        where: and(
-          eq(knowledgeItems.categoryId, topFaq.categoryId),
-          eq(knowledgeItems.status, "ACTIVE"),
-          ne(knowledgeItems.id, top.id),
-          isNull(knowledgeItems.deletedAt),
-        ),
-        columns: { id: true, question: true },
-        orderBy: (t, { asc }) => asc(t.question),
-        limit: SUGGESTION_LIMIT,
-      });
-      for (const row of sameCategory) push(row.id, row.question);
-    }
+    if (suggestions.length >= limit) break;
   }
-
-  // 3) Kemiripan semantik — FAQ lain pada hasil pencarian (di luar jawaban utama).
-  for (const r of results) {
-    if (r.type !== "FAQ" || r.id === top.id) continue;
-    push(r.id, r.question);
-    if (suggestions.length >= SUGGESTION_LIMIT) break;
-  }
-
-  return suggestions.slice(0, SUGGESTION_LIMIT);
+  return suggestions;
 }
 
-/** Media FAQ teratas (gambar/URL eksternal) — URL publik, bukan base64. */
 async function buildMedia(faqId: string): Promise<RagMediaItem[]> {
   const rows = await db.query.knowledgeMedia.findMany({
     where: eq(knowledgeMedia.knowledgeId, faqId),
-    columns: { type: true, caption: true, url: true, filePath: true },
-    orderBy: (t, { asc }) => asc(t.sortOrder),
+    columns: { id: true, type: true, caption: true, url: true, filePath: true },
+    orderBy: (table, { asc }) => asc(table.sortOrder),
   });
-
   const items: RagMediaItem[] = [];
   for (const row of rows) {
-    const fileUrl = fileUrlFromPath(row.filePath);
-    const url = fileUrl ?? row.url;
-    if (!url) continue;
-    items.push({ type: row.type, caption: row.caption ?? null, url });
+    let url = row.url;
+    if (row.filePath) {
+      const localUrl = await fileUrlFromPath(row.filePath);
+      if (localUrl) url = localUrl;
+      else console.warn(`[RAG_ASSET_MISSING] ${JSON.stringify({ type: "media", faqId, mediaId: row.id, filePath: row.filePath })}`);
+    }
+    if (url) items.push({ type: row.type, caption: row.caption ?? null, url });
   }
   return items;
 }
 
-/** Lampiran FAQ teratas — metadata + URL file (filePath → /api/files/...). */
 async function buildAttachments(faqId: string): Promise<RagAttachmentItem[]> {
   const rows = await db.query.knowledgeAttachments.findMany({
     where: eq(knowledgeAttachments.knowledgeId, faqId),
     columns: {
+      id: true,
       title: true,
       type: true,
       fileName: true,
@@ -210,14 +172,16 @@ async function buildAttachments(faqId: string): Promise<RagAttachmentItem[]> {
       filePath: true,
       url: true,
     },
-    orderBy: (t, { asc }) => asc(t.sortOrder),
+    orderBy: (table, { asc }) => asc(table.sortOrder),
   });
-
   const items: RagAttachmentItem[] = [];
   for (const row of rows) {
-    // Lampiran bisa berupa file upload (filePath → /api/files/...) atau
-    // URL eksternal (bulk import). Prioritaskan file upload.
-    const url = fileUrlFromPath(row.filePath) ?? row.url;
+    let url = row.url;
+    if (row.filePath) {
+      const localUrl = await fileUrlFromPath(row.filePath);
+      if (localUrl) url = localUrl;
+      else console.warn(`[RAG_ASSET_MISSING] ${JSON.stringify({ type: "attachment", faqId, attachmentId: row.id, filePath: row.filePath })}`);
+    }
     if (!url) continue;
     items.push({
       title: row.title,
@@ -231,29 +195,25 @@ async function buildAttachments(faqId: string): Promise<RagAttachmentItem[]> {
   return items;
 }
 
-/**
- * Muat pelengkap jawaban dari DB untuk hasil pencarian RAG.
- * Sumber: FAQ hasil + item_sources; media/lampiran hanya untuk FAQ teratas;
- * saran: relasi eksplisit > kategori sama > kemiripan semantik.
- */
-export async function buildRagAnswer(results: SearchResult[]): Promise<RagAnswer> {
-  const sources = await buildOfficialSources(results);
+export async function buildRagAnswer(
+  results: SearchResult[],
+  options: RagAnswerOptions = {},
+): Promise<RagAnswer> {
   const top = results[0];
-
-  if (!top) {
-    return { sources, suggestions: [], media: [], attachments: [] };
+  if (!top) return { sources: [], suggestions: [], media: [], attachments: [] };
+  const suggestions = await buildSemanticSuggestions(top, results, options);
+  const thresholdMedium = options.thresholdMedium ?? getRagConfig().thresholdMedium;
+  if (top.score < thresholdMedium) {
+    return { sources: [], suggestions, media: [], attachments: [] };
   }
-
+  const sources = await buildOfficialSources([top]);
   if (top.type === "FAQ") {
-    const [suggestions, media, attachments] = await Promise.all([
-      buildSuggestions(top, results),
+    const [media, attachments] = await Promise.all([
       buildMedia(top.id),
       buildAttachments(top.id),
     ]);
     return { sources, suggestions, media, attachments };
   }
-
-  // Top berupa chunk dokumen: saran dari FAQ relevan lain, tanpa media/lampiran.
-  const suggestions = await buildSuggestions(top, results);
   return { sources, suggestions, media: [], attachments: [] };
 }
+

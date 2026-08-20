@@ -29,6 +29,34 @@
       "when": 1786699492523,
       "tag": "0003_living_meggan",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787112082827,
+      "tag": "0004_unknown_invaders",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787193629184,
+      "tag": "0005_dashing_freak",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787206433917,
+      "tag": "0006_known_golden_guardian",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787207534293,
+      "tag": "0007_groovy_red_wolf",
+      "breakpoints": true
     }
   ]
 }

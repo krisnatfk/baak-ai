@@ -42,6 +42,7 @@ import {
   type FaqTableItem,
 } from "@/components/knowledge/faq-bulk-table";
 import { EmbeddingQueueButton } from "@/components/knowledge/embedding-queue-button";
+import { MenuPreviewDialog } from "@/components/knowledge/menu-preview-dialog";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +65,15 @@ function stringParam(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
 }
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function uuidParam(v: string | string[] | undefined): string {
+  const s = stringParam(v);
+  if (!s || s === "all") return "";
+  return UUID_REGEX.test(s) ? s : "";
+}
+
 function pick<T extends readonly string[]>(
   v: string | string[] | undefined,
   options: T,
@@ -77,11 +87,11 @@ export default async function FaqPage({ searchParams }: FaqPageProps) {
   const canWrite = user.roleKey !== "VIEWER";
   const params = await searchParams;
 
-  const q = stringParam(params.q) ?? "";
+  const q = stringParam(params.q)?.trim() ?? "";
   const status = pick(params.status, STATUS_OPTIONS);
-  const category = stringParam(params.category) ?? "";
+  const category = uuidParam(params.category);
   const audience = pick(params.audience, AUDIENCE_OPTIONS);
-  const source = stringParam(params.source) ?? "";
+  const source = uuidParam(params.source);
   const embedding = pick(params.embedding, EMBEDDING_OPTIONS);
   const pageSize = PAGE_SIZES.includes(Number(params.pageSize) as never)
     ? (Number(params.pageSize) as (typeof PAGE_SIZES)[number])
@@ -244,6 +254,7 @@ export default async function FaqPage({ searchParams }: FaqPageProps) {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            <MenuPreviewDialog />
             <Button asChild>
               <Link href="/knowledge/faq/new">
                 <Plus className="size-4" /> Tambah FAQ

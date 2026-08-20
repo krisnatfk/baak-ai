@@ -9,9 +9,16 @@ import { recordChatMessage } from "@/lib/server/chat";
 import { saveUnanswered } from "@/lib/server/unanswered";
 import { semanticSearch } from "@/services/rag/search";
 import { classifyConfidence } from "@/services/rag/confidence";
-import { buildRagContext, confidenceThresholds } from "@/services/rag/context";
+import { buildRagContext } from "@/services/rag/context";
 import { buildRagAnswer } from "@/services/rag/answer";
 import { normalizeText } from "@/services/rag/normalize";
+import { getBotSettings } from "@/lib/server/bot-settings";
+import { getBotMenu } from "@/services/bot/menu";
+import { logBotEventBestEffort } from "@/services/bot/analytics";
+import {
+  buildHandoffDetails,
+  recordRagHandoffState,
+} from "@/services/bot/handoff-state";
 
 export const dynamic = "force-dynamic";
 
@@ -60,16 +67,47 @@ export async function POST(request: Request) {
   const { message, sessionId, sender } = parsed.data;
 
   // ---- Retrieval + klasifikasi confidence ----
-  const { results, embedTimeMs, searchTimeMs } = await semanticSearch(message);
+  const settings = await getBotSettings();
+  const envConfig = getRagConfig();
+  const thresholdHigh = settings.similarityEnabled
+    ? settings.similarityHigh
+    : envConfig.thresholdHigh;
+  const thresholdMedium = settings.similarityEnabled
+    ? settings.similarityMedium
+    : envConfig.thresholdMedium;
+  const suggestionEnabled =
+    settings.similaritySuggestionEnabled && settings.similarityMaxSuggestions > 0;
+  const minimumCandidateScore = suggestionEnabled
+    ? Math.max(0.35, thresholdMedium - 0.15)
+    : thresholdMedium;
+  const { results, embedTimeMs, searchTimeMs } = await semanticSearch(
+    message,
+    undefined,
+    undefined,
+    minimumCandidateScore,
+  );
   const topScore = results[0]?.score ?? 0;
   const secondScore = results[1]?.score ?? null;
-  const confidence = classifyConfidence(topScore, results.length, secondScore);
+  const confidence = classifyConfidence(topScore, results.length, secondScore, {
+    high: thresholdHigh,
+    medium: thresholdMedium,
+  });
   const found = confidence !== "LOW";
 
   // Pelengkap jawaban (sumber/saran/media/lampiran) hanya saat ditemukan;
   // saat tidak ditemukan semua dikosongkan.
-  const enrichment = found ? await buildRagAnswer(results) : null;
-  const context = found ? buildRagContext(results) : null;
+  const enrichment = await buildRagAnswer(results, {
+    thresholdMedium,
+    suggestionEnabled,
+    maxSuggestions: settings.similarityMaxSuggestions,
+  });
+  const answerResults = results.filter((result) => result.score >= thresholdMedium);
+  const context = found
+    ? buildRagContext(answerResults, {
+        media: enrichment.media,
+        attachments: enrichment.attachments,
+      })
+    : null;
 
   // ---- Efek samping (best-effort, tidak menggagalkan respons) ----
 
@@ -105,9 +143,18 @@ export async function POST(request: Request) {
     }
   }
 
+  // Counter handoff terpisah dari timesAsked (yang merupakan agregat global
+  // per pertanyaan). State ini adalah streak berturut-turut per session/sender.
+  const handoffState = await recordRagHandoffState({
+    found,
+    sessionId,
+    sender,
+    enabled: settings.humanHandoffEnabled,
+    afterUnanswered: settings.humanHandoffAfterUnanswered,
+  });
+
   // 3) Retrieval log untuk analitik.
   try {
-    const ragConfig = getRagConfig();
     await logRetrieval({
       query: message,
       sessionId,
@@ -123,17 +170,46 @@ export async function POST(request: Request) {
         type: r.type,
         score: Number(r.score.toFixed(4)),
       })),
-      thresholdHigh: ragConfig.thresholdHigh,
-      thresholdMedium: ragConfig.thresholdMedium,
+      thresholdHigh,
+      thresholdMedium,
       resultCount: results.length,
     });
   } catch (err) {
     console.error("[rag/context] Gagal menyimpan retrieval_logs:", err);
   }
 
-  const thresholds = confidenceThresholds();
+  const thresholds = { high: thresholdHigh, medium: thresholdMedium };
 
-  if (found && enrichment) {
+  await logBotEventBestEffort({
+    type: found ? "RAG_FOUND" : "RAG_NOT_FOUND",
+    question: message,
+    route: "QUESTION",
+    matchedFaqId: found && results[0]?.type === "FAQ" ? results[0].id : null,
+    confidence,
+    score: topScore,
+  });
+  if (found && results[0]?.type === "FAQ") {
+    await logBotEventBestEffort({
+      type: "FAQ_MATCH",
+      question: message,
+      route: "QUESTION",
+      matchedFaqId: results[0].id,
+      confidence,
+      score: topScore,
+    });
+  }
+  if (enrichment.suggestions.length > 0) {
+    await logBotEventBestEffort({
+      type: "SIMILAR_SUGGESTION",
+      question: message,
+      route: "QUESTION",
+      confidence,
+      score: topScore,
+      metadata: { count: enrichment.suggestions.length },
+    });
+  }
+
+  if (found) {
     return NextResponse.json({
       success: true,
       found: true,
@@ -149,6 +225,15 @@ export async function POST(request: Request) {
     });
   }
 
+  const fallbackMenu = settings.showMenuOnNotFound
+    ? (await getBotMenu(settings)).items.map(({ number, faqId, question }) => ({
+        number,
+        faqId,
+        question,
+      }))
+    : [];
+  const requiresHuman = handoffState.requiresHuman;
+
   return NextResponse.json({
     success: true,
     found: false,
@@ -156,11 +241,23 @@ export async function POST(request: Request) {
     score: Number(topScore.toFixed(4)),
     context: null,
     sources: [],
-    suggestions: [],
+    suggestions: settings.showSuggestionsOnNotFound
+      ? enrichment.suggestions
+      : [],
     media: [],
     attachments: [],
-    requiresHuman: true,
-    message: "Pertanyaan disimpan sebagai pertanyaan tidak terjawab.",
+    requiresHuman,
+    message: settings.notFoundMessage,
+    menu: fallbackMenu,
+    handoff: buildHandoffDetails(handoffState.includeDetails, {
+      message: settings.humanHandoffMessage,
+      phone: settings.humanHandoffPhone,
+      url: settings.humanHandoffUrl,
+    }),
+    handoffCooldown: {
+      streak: handoffState.streak,
+      detailsSuppressed: requiresHuman && !handoffState.includeDetails,
+    },
     thresholds,
   });
 }

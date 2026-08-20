@@ -17,11 +17,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "BAAK AI",
-    template: "%s · BAAK AI",
+    default: "PMB AI · Universitas Teknokrat Indonesia",
+    template: "%s · PMB AI Universitas Teknokrat Indonesia",
   },
   description:
-    "Admin & Knowledge Management System untuk chatbot WhatsApp BAAK (Biro Administrasi Akademik dan Kemahasiswaan).",
+    "Admin & Knowledge Management System untuk Chatbot WhatsApp Penerimaan Mahasiswa Baru (PMB) Universitas Teknokrat Indonesia.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -29,8 +29,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="id"
       className={`${interSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
         {children}
         <Toaster richColors position="top-right" />
       </body>

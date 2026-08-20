@@ -16,8 +16,16 @@ export function classifyConfidence(
   topScore: number,
   topCount: number,
   secondScore: number | null,
+  thresholds?: {
+    high: number;
+    medium: number;
+    highMargin?: number;
+  },
 ): RagConfidence {
-  const { thresholdHigh, thresholdMedium, highMargin } = getRagConfig();
+  const config = getRagConfig();
+  const thresholdHigh = thresholds?.high ?? config.thresholdHigh;
+  const thresholdMedium = thresholds?.medium ?? config.thresholdMedium;
+  const highMargin = thresholds?.highMargin ?? config.highMargin;
 
   if (topScore >= thresholdHigh) {
     const onlyOne = topCount <= 1;

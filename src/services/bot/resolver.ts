@@ -1,0 +1,196 @@
+import "server-only";
+
+import type { BotSettingsInput } from "@/lib/bot-settings-schema";
+import { getBotSettings } from "@/lib/server/bot-settings";
+import { normalizeText } from "@/services/rag/normalize";
+import { logBotEventBestEffort } from "./analytics";
+import { formatMenuText, getBotMenu, type BotMenuItem } from "./menu";
+import {
+  detectDeterministicIntent,
+  detectSemanticGreeting,
+  type IntentDetection,
+  type IntentMatchMethod,
+} from "./smart-intent";
+
+export type BotRoute = "WELCOME" | "MENU" | "QUESTION";
+
+export interface BotResolveResult {
+  success: true;
+  route: BotRoute;
+  reason: "GREETING" | "GREETING_WITH_QUESTION" | "NOISE" | "MENU_NUMBER" | "QUESTION" | "MAINTENANCE";
+  normalizedMessage: string;
+  responseText: string | null;
+  ragQuery: string | null;
+  resolvedMenuItem: Pick<BotMenuItem, "number" | "faqId" | "question"> | null;
+  requiresHuman: boolean;
+  botStatus: BotSettingsInput["status"];
+  matchedCanonicalRule: string | null;
+  matchMethod: IntentMatchMethod | null;
+}
+
+function stripEmoji(text: string): string {
+  return text
+    .replace(/\p{Extended_Pictographic}/gu, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+function welcomeText(
+  settings: BotSettingsInput,
+  menuText: string,
+  specificReply?: string,
+): string {
+  const parts: string[] = [];
+  if (specificReply?.trim()) parts.push(specificReply.trim());
+  if (settings.welcomeEnabled && settings.welcomeIntro.trim()) {
+    const intro = specificReply?.trim()
+      ? settings.welcomeIntro
+          .trim()
+          .split("\n")
+          .filter((line, index) => index !== 0 || !/^(halo|hai|hallo|hello|assalamu|assalamualaikum|selamat (pagi|siang|sore|malam))\b/i.test(stripEmoji(line).trim()))
+          .join("\n")
+          .trim()
+      : settings.welcomeIntro.trim();
+    if (intro) parts.push(intro);
+  }
+  if (settings.includeMenu && menuText) parts.push(menuText);
+  if (settings.welcomeClosing.trim()) parts.push(settings.welcomeClosing.trim());
+  const value = parts.join("\n\n");
+  return settings.emojiEnabled ? value : stripEmoji(value);
+}
+
+export async function resolveBotMessage(message: string): Promise<BotResolveResult> {
+  const settings = await getBotSettings();
+  const normalizedMessage = normalizeText(message);
+
+  if (settings.status === "MAINTENANCE") {
+    await logBotEventBestEffort({
+      type: "GREETING",
+      question: message,
+      route: "WELCOME",
+      metadata: { reason: "MAINTENANCE" },
+    });
+    return {
+      success: true,
+      route: "WELCOME",
+      reason: "MAINTENANCE",
+      normalizedMessage,
+      responseText: settings.maintenanceMessage,
+      ragQuery: null,
+      resolvedMenuItem: null,
+      requiresHuman: false,
+      botStatus: settings.status,
+      matchedCanonicalRule: null,
+      matchMethod: null,
+    };
+  }
+
+  const menu = await getBotMenu(settings);
+  const menuText = formatMenuText(menu.items);
+  if (/^\d{1,3}$/.test(normalizedMessage)) {
+    const number = Number(normalizedMessage);
+    const item = menu.items.find((candidate) => candidate.number === number);
+    if (item) {
+      await logBotEventBestEffort({
+        type: "MENU_SELECTION",
+        question: message,
+        route: "MENU",
+        matchedFaqId: item.faqId,
+        metadata: {
+          number,
+          menuMode: menu.mode,
+          originalMessage: message,
+          normalizedMessage,
+          detectedIntent: "MENU",
+          matchedCanonicalRule: null,
+          matchMethod: "EXACT",
+        },
+      });
+      return {
+        success: true,
+        route: "MENU",
+        reason: "MENU_NUMBER",
+        normalizedMessage,
+        responseText: null,
+        ragQuery: item.question,
+        resolvedMenuItem: {
+          number: item.number,
+          faqId: item.faqId,
+          question: item.question,
+        },
+        requiresHuman: false,
+        botStatus: settings.status,
+        matchedCanonicalRule: null,
+        matchMethod: "EXACT",
+      };
+    }
+  }
+
+  let detection: IntentDetection = detectDeterministicIntent(message, settings.rules, {
+    enabled: settings.smartGreetingEnabled,
+    fuzzyEnabled: settings.fuzzyGreetingEnabled,
+    semanticEnabled: settings.semanticGreetingEnabled,
+    stripGreetingFromQuestion: settings.stripGreetingFromQuestion,
+    similarityThreshold: settings.greetingSimilarityThreshold,
+    modifiers: settings.greetingModifiers,
+  });
+  if (detection.intent === "UNKNOWN" && settings.smartGreetingEnabled && settings.semanticGreetingEnabled) {
+    detection = (await detectSemanticGreeting(
+      detection.normalizedMessage,
+      settings.rules,
+      settings.greetingSimilarityThreshold,
+    )) ?? { ...detection, intent: "QUESTION", ragQuery: message.trim(), matchMethod: "NORMALIZED" };
+  }
+
+  const analyticsMetadata = {
+    originalMessage: message,
+    normalizedMessage: detection.normalizedMessage,
+    detectedIntent: detection.greetingWithQuestion ? "QUESTION" : detection.intent,
+    matchedCanonicalRule: detection.matchedCanonicalRule,
+    matchMethod: detection.matchMethod,
+  };
+
+  if (detection.intent === "GREETING" || detection.intent === "NOISE") {
+    const reason = detection.intent;
+    await logBotEventBestEffort({
+      type: "GREETING",
+      question: message,
+      route: "WELCOME",
+      metadata: { reason, ...analyticsMetadata },
+    });
+    return {
+      success: true,
+      route: "WELCOME",
+      reason,
+      normalizedMessage: detection.normalizedMessage,
+      responseText: welcomeText(settings, menuText, detection.matchedRule?.reply),
+      ragQuery: null,
+      resolvedMenuItem: null,
+      requiresHuman: false,
+      botStatus: settings.status,
+      matchedCanonicalRule: detection.matchedCanonicalRule,
+      matchMethod: detection.matchMethod,
+    };
+  }
+
+  await logBotEventBestEffort({
+    type: "QUESTION",
+    question: message,
+    route: "QUESTION",
+    metadata: analyticsMetadata,
+  });
+  return {
+    success: true,
+    route: "QUESTION",
+    reason: detection.greetingWithQuestion ? "GREETING_WITH_QUESTION" : "QUESTION",
+    normalizedMessage: detection.normalizedMessage,
+    responseText: null,
+    ragQuery: detection.ragQuery ?? message.trim(),
+    resolvedMenuItem: null,
+    requiresHuman: false,
+    botStatus: settings.status,
+    matchedCanonicalRule: detection.matchedCanonicalRule,
+    matchMethod: detection.matchMethod,
+  };
+}

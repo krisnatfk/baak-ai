@@ -23,6 +23,8 @@
  *    vector) tidak gagal.
  */
 
+import path from "node:path";
+
 // Guard runtime bila terlanjur ter-bundle ke client (nilai secret tetap
 // tidak akan ter-inline oleh Next.js karena bukan NEXT_PUBLIC_*).
 if (typeof window !== "undefined") {
@@ -191,6 +193,7 @@ export interface RagConfig {
   thresholdMedium: number;
   highMargin: number;
   rateLimitPerMinute: number;
+  defaultAudiences: string[];
 }
 
 let _ragConfig: RagConfig | undefined;
@@ -198,7 +201,7 @@ let _ragConfig: RagConfig | undefined;
 export function getRagConfig(): RagConfig {
   if (!_ragConfig) {
     const thresholdHigh = floatBetween("RAG_THRESHOLD_HIGH", 0.7, 0, 1);
-    const thresholdMedium = floatBetween("RAG_THRESHOLD_MEDIUM", 0.5, 0, 1);
+    const thresholdMedium = floatBetween("RAG_THRESHOLD_MEDIUM", 0.55, 0, 1);
 
     // Anti-hallucination: ladder confidence harus berurutan.
     if (!(0 < thresholdMedium && thresholdMedium < thresholdHigh && thresholdHigh <= 1)) {
@@ -208,6 +211,12 @@ export function getRagConfig(): RagConfig {
       );
     }
 
+    const audiencesRaw = optional("RAG_DEFAULT_AUDIENCES", "CALON_MAHASISWA,UMUM,ORANG_TUA");
+    const defaultAudiences = audiencesRaw
+      .split(",")
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean);
+
     _ragConfig = {
       maxResults: positiveInt("RAG_MAX_RESULTS", 5),
       thresholdHigh,
@@ -216,6 +225,7 @@ export function getRagConfig(): RagConfig {
       highMargin: floatBetween("RAG_HIGH_MARGIN", 0.02, 0, 1),
       // Rate limit internal API (permintaan per menit per kunci/IP).
       rateLimitPerMinute: positiveInt("RAG_RATE_LIMIT_PER_MINUTE", 60),
+      defaultAudiences: defaultAudiences.length > 0 ? defaultAudiences : ["CALON_MAHASISWA", "UMUM", "ORANG_TUA"],
     };
   }
   return _ragConfig;
@@ -271,6 +281,21 @@ export function getUploadDir(): string {
   return _uploadDir;
 }
 
+/** Direktori absolut tunggal untuk seluruh operasi baca/tulis upload. */
+export function resolveUploadDir(): string {
+  return path.resolve(getUploadDir());
+}
+
+let _botMediaBaseUrl: string | null | undefined;
+/** Host yang dapat dijangkau transport bot (mis. WAHA dalam container). */
+export function getBotMediaBaseUrl(): string | null {
+  if (_botMediaBaseUrl === undefined) {
+    const value = process.env.BOT_MEDIA_BASE_URL?.trim();
+    _botMediaBaseUrl = value ? value.replace(/\/+$/, "") : null;
+  }
+  return _botMediaBaseUrl;
+}
+
 // =========================================================
 //  Objek `env` (aksesor lazy) — kompatibel dengan pemanggil lama.
 //
@@ -319,6 +344,10 @@ export const env = Object.freeze({
 
   get uploadDir() {
     return getUploadDir();
+  },
+
+  get botMediaBaseUrl() {
+    return getBotMediaBaseUrl();
   },
 
   get llm() {

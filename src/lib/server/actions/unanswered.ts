@@ -20,7 +20,7 @@ import { requireRole } from "@/lib/guards";
 import { fail, ok, type ActionResult } from "./shared";
 
 /** Status yang bisa diubah manual dari halaman unanswered (selain ADDED_TO_KNOWLEDGE). */
-export const UNANSWERED_MANUAL_STATUSES = [
+const UNANSWERED_MANUAL_STATUSES = [
   "NEW",
   "REVIEWED",
   "ANSWERED",

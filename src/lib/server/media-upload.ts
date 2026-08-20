@@ -13,11 +13,11 @@
  * sebagai volume di Docker agar bertahan saat container dibuat ulang.
  */
 
-import fs from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
-import { getMaxUploadMb, getUploadDir } from "@/lib/env";
+import { getBotMediaBaseUrl, getMaxUploadMb } from "@/lib/env";
 import { formatBytes } from "@/lib/format";
+import { getLocalUploadFile, writeLocalUploadFile } from "@/lib/server/upload-storage";
 
 export const MEDIA_MAX_BYTES = getMaxUploadMb() * 1024 * 1024;
 
@@ -224,11 +224,13 @@ async function writeStored(
 ): Promise<SavedMediaFile> {
   const buffer = await assertNotEmptyAndSize(file);
 
-  const uploadDir = getUploadDir();
-  fs.mkdirSync(uploadDir, { recursive: true });
   const storedName = buildStoredName(originalName, ext);
-  const absolutePath = path.join(uploadDir, storedName);
-  await fs.promises.writeFile(absolutePath, buffer);
+  let filePath: string;
+  try {
+    ({ filePath } = await writeLocalUploadFile(storedName, buffer));
+  } catch {
+    throw new MediaUploadError("Gagal menyimpan file upload. Silakan coba lagi.");
+  }
 
   const mime =
     (kind === "JPEG"
@@ -251,7 +253,7 @@ async function writeStored(
 
   return {
     fileName: originalName,
-    filePath: `${uploadDir.replace(/\\/g, "/")}/${storedName}`,
+    filePath,
     fileSize: file.size,
     mimeType: mime,
   };
@@ -287,9 +289,16 @@ export async function saveAttachmentFile(
 }
 
 /** URL akses file dari file_path tersimpan (relatif ke /api/files). */
-export function fileUrlFromPath(filePath: string | null | undefined): string | null {
-  if (!filePath) return null;
-  const base = path.posix.basename(filePath);
-  if (!base) return null;
-  return `/api/files/${encodeURIComponent(base)}`;
+export async function fileUrlFromPath(
+  filePath: string | null | undefined,
+): Promise<string | null> {
+  const file = await getLocalUploadFile(filePath);
+  if (!file) return null;
+  const encodedPath = file.relativePath
+    .split(path.sep)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  const relativeUrl = `/api/files/${encodedPath}`;
+  const botBaseUrl = getBotMediaBaseUrl();
+  return botBaseUrl ? `${botBaseUrl}${relativeUrl}` : relativeUrl;
 }

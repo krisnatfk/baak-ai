@@ -114,6 +114,8 @@ export default async function NewFaqPage({ searchParams }: NewFaqPageProps) {
                 sourceUrl: "",
                 status: "DRAFT",
                 internalNote: `Diisi otomatis dari pertanyaan tidak terjawab (${unanswered.id}).`,
+                showInMainMenu: false,
+                mainMenuOrder: null,
                 alternatives: [],
                 sources: [],
                 relatedQuestions: [],

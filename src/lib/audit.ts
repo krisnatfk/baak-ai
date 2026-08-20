@@ -22,6 +22,7 @@ export type AuditEntity =
   | "DOCUMENT"
   | "MEDIA"
   | "ATTACHMENT"
+  | "BOT_SETTINGS"
   | "IMPORT_BATCH";
 
 export type AuditAction =

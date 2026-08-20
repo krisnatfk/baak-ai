@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { EMBEDDING_TEXT_VERSION } from "@/db/schema";
 import {
   knowledgeDocumentChunks,
@@ -6,6 +6,7 @@ import {
   knowledgeItems,
   knowledgeCategories,
   knowledgeSources,
+  type Audience,
 } from "@/db/schema";
 import { db } from "@/db/client";
 import { getRagConfig } from "@/lib/env";
@@ -37,24 +38,71 @@ export interface SearchResponse {
 }
 
 /**
- * Pencarian semantik gabungan: FAQ (ACTIVE, belum dihapus, embedding selesai)
+ * Deteksi kueri tidak bermakna, sapaan pendek, atau tombol acak (random noise).
+ * Mencegah pemborosan embedding dan mencegah retrieval sembarang FAQ.
+ */
+export function isNoiseQuery(text: string): boolean {
+  const s = text.trim().toLowerCase();
+  if (s.length < 2) return true;
+  // Hanya simbol / tanda baca / angka tanpa huruf (panjang <= 4)
+  if (!/[a-z\u00C0-\u024F]/i.test(s) && s.length <= 4) return true;
+  // Pengulangan satu karakter identik, mis. "aaa", "ppp", "???"
+  if (/^(.)\1+$/.test(s)) return true;
+  // Keyboard smash umum
+  const noisePatterns = [
+    /^asdf/i,
+    /^qwerty/i,
+    /^zxcv/i,
+    /^hjkl/i,
+    /^1234/i,
+    /^test$/i,
+  ];
+  if (noisePatterns.some((re) => re.test(s))) return true;
+  return false;
+}
+
+/**
+ * Deteksi kueri layanan mahasiswa aktif yang BUKAN domain PMB (PKL, KRS, KHS, Wisuda, Cuti).
+ * Bila pengguna menanyakan hal ini tanpa konteks PMB, tolak agar chatbot tidak memaksakan jawaban FAQ lain.
+ */
+export function isNonPmbQuery(normalized: string): boolean {
+  const s = normalized.trim().toLowerCase();
+  const words = s.split(/[\s,.'"\-?!=+*/()]+/);
+  const legacyExclusiveTerms = ["pkl", "krs", "khs", "wisuda", "yudisium", "cuti"];
+  const hasLegacyTerm = words.some((w) => legacyExclusiveTerms.includes(w));
+  if (!hasLegacyTerm) return false;
+
+  const hasPmbContext = /\bpmb\b|\bspmb\b|calon mahasiswa|mahasiswa baru|penerimaan mahasiswa baru/i.test(s);
+  return !hasPmbContext;
+}
+
+/**
+ * Pencarian semantik gabungan: FAQ PMB (ACTIVE, belum dihapus, embedding selesai)
  * + chunk dokumen. Kueri di-normalisasi lalu di-embed; hasil diurutkan dengan
  * operator pgvector cosine (`<=>`), score = 1 − jarak cosine.
  *
- * Predikat WHERE mengikuti partial HNSW index di schema (status/deleted/status
- * embedding) plus re-check `embedding_text_version` dan `embedding IS NOT NULL`
- * yang TIDAK termasuk index.
+ * Menerapkan Relevance Gate:
+ *  - Memfilter hanya audiens PMB (CALON_MAHASISWA, UMUM, ORANG_TUA).
+ *  - Menyaring noise query (p, asdf, dll) dan domain non-PMB (PKL, KRS, dll).
+ *  - Menyaring hasil di bawah threshold relevansi medium.
  */
 export async function semanticSearch(
   query: string,
   limit?: number,
+  audiences?: string[],
+  minimumScore?: number,
 ): Promise<SearchResponse> {
-  const maxResults = Math.max(1, Math.min(limit ?? getRagConfig().maxResults, 20));
+  const config = getRagConfig();
+  const maxResults = Math.max(1, Math.min(limit ?? config.maxResults, 20));
   const normalized = normalizeText(query);
 
-  if (normalized.length === 0) {
+  if (normalized.length === 0 || isNoiseQuery(normalized) || isNonPmbQuery(normalized)) {
     return { results: [], embedTimeMs: 0, searchTimeMs: 0, topScores: [] };
   }
+
+  const targetAudiences = (audiences && audiences.length > 0)
+    ? audiences
+    : config.defaultAudiences;
 
   const provider = getEmbeddingProvider();
 
@@ -85,6 +133,7 @@ export async function semanticSearch(
         and(
           eq(knowledgeItems.status, "ACTIVE"),
           isNull(knowledgeItems.deletedAt),
+          inArray(knowledgeItems.audience, targetAudiences as Audience[]),
           eq(knowledgeItems.embeddingStatus, "COMPLETED"),
           eq(knowledgeItems.embeddingTextVersion, EMBEDDING_TEXT_VERSION),
           sql`${knowledgeItems.embedding} IS NOT NULL`,
@@ -125,7 +174,7 @@ export async function semanticSearch(
 
   const searchTimeMs = Math.round(performance.now() - tSearch);
 
-  const results: SearchResult[] = [
+  const rawResults: SearchResult[] = [
     ...faqRows.map((r) => ({
       id: r.id,
       type: "FAQ" as const,
@@ -146,8 +195,14 @@ export async function semanticSearch(
     })),
   ];
 
-  results.sort((a, b) => b.score - a.score);
-  const top = results.slice(0, maxResults);
+  rawResults.sort((a, b) => b.score - a.score);
+
+  // Relevance Gate: hanya hasil yang memenuhi ambang batas minimum relevansi (thresholdMedium)
+  // yang diteruskan sebagai jawaban valid.
+  const relevantResults = rawResults.filter(
+    (r) => r.score >= (minimumScore ?? config.thresholdMedium),
+  );
+  const top = relevantResults.slice(0, maxResults);
 
   return {
     results: top,
