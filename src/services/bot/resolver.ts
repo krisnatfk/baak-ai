@@ -13,7 +13,7 @@ import {
   normalizeIntentMessage,
 } from "./smart-intent";
 
-export type BotRoute = "WELCOME" | "MENU" | "QUESTION";
+export type BotRoute = "WELCOME" | "MENU" | "QUESTION" | "THANKS";
 
 export interface GreetingMetadata {
   detected: boolean;
@@ -24,7 +24,7 @@ export interface GreetingMetadata {
 export interface BotResolveResult {
   success: true;
   route: BotRoute;
-  reason: "GREETING" | "GREETING_WITH_QUESTION" | "NOISE" | "MENU_NUMBER" | "QUESTION" | "MAINTENANCE";
+  reason: "GREETING" | "GREETING_WITH_QUESTION" | "NOISE" | "MENU_NUMBER" | "QUESTION" | "MAINTENANCE" | "THANKS";
   normalizedMessage: string;
   responseText: string | null;
   ragQuery: string | null;
@@ -142,8 +142,84 @@ export async function resolveBotMessage(message: string): Promise<BotResolveResu
     };
   }
 
+  let detection: IntentDetection = detectDeterministicIntent(message, settings.rules, {
+    enabled: settings.smartGreetingEnabled,
+    fuzzyEnabled: settings.fuzzyGreetingEnabled,
+    semanticEnabled: settings.semanticGreetingEnabled,
+    stripGreetingFromQuestion: settings.stripGreetingFromQuestion,
+    similarityThreshold: settings.greetingSimilarityThreshold,
+    modifiers: settings.greetingModifiers,
+  });
+  if (detection.intent === "UNKNOWN" && settings.smartGreetingEnabled && settings.semanticGreetingEnabled) {
+    detection = (await detectSemanticGreeting(
+      detection.normalizedMessage,
+      settings.rules,
+      settings.greetingSimilarityThreshold,
+    )) ?? { ...detection, intent: "QUESTION", ragQuery: message.trim(), matchMethod: "NORMALIZED" };
+  }
+
+  const analyticsMetadata = {
+    originalMessage: message,
+    normalizedMessage: detection.normalizedMessage,
+    detectedIntent: detection.greetingWithQuestion ? "QUESTION" : detection.intent,
+    matchedCanonicalRule: detection.matchedCanonicalRule,
+    matchMethod: detection.matchMethod,
+  };
+  const greeting = greetingMetadata(detection, settings);
+
+  // 1. GREETING / NOISE
+  if (detection.intent === "GREETING" || detection.intent === "NOISE") {
+    const menu = await getBotMenu(settings);
+    const menuText = formatMenuText(menu.items);
+    const reason = detection.intent;
+    await logBotEventBestEffort({
+      type: "GREETING",
+      question: message,
+      route: "WELCOME",
+      metadata: { reason, ...analyticsMetadata },
+    });
+    return {
+      success: true,
+      route: "WELCOME",
+      reason,
+      normalizedMessage: detection.normalizedMessage,
+      responseText: welcomeText(settings, menuText, detection.matchedRule?.reply),
+      ragQuery: null,
+      resolvedMenuItem: null,
+      requiresHuman: false,
+      botStatus: settings.status,
+      matchedCanonicalRule: detection.matchedCanonicalRule,
+      matchMethod: detection.matchMethod,
+      greeting,
+    };
+  }
+
+  // 2. THANKS
+  if (detection.intent === "THANKS") {
+    await logBotEventBestEffort({
+      type: "GREETING",
+      question: message,
+      route: "THANKS",
+      metadata: { reason: "THANKS", ...analyticsMetadata },
+    });
+    return {
+      success: true,
+      route: "THANKS",
+      reason: "THANKS",
+      normalizedMessage: detection.normalizedMessage,
+      responseText: null,
+      ragQuery: null,
+      resolvedMenuItem: null,
+      requiresHuman: false,
+      botStatus: settings.status,
+      matchedCanonicalRule: null,
+      matchMethod: detection.matchMethod ?? "NORMALIZED",
+      greeting: NO_GREETING,
+    };
+  }
+
+  // 3. MENU
   const menu = await getBotMenu(settings);
-  const menuText = formatMenuText(menu.items);
   if (/^\d{1,3}$/.test(normalizedMessage)) {
     const number = Number(normalizedMessage);
     const item = menu.items.find((candidate) => candidate.number === number);
@@ -184,55 +260,7 @@ export async function resolveBotMessage(message: string): Promise<BotResolveResu
     }
   }
 
-  let detection: IntentDetection = detectDeterministicIntent(message, settings.rules, {
-    enabled: settings.smartGreetingEnabled,
-    fuzzyEnabled: settings.fuzzyGreetingEnabled,
-    semanticEnabled: settings.semanticGreetingEnabled,
-    stripGreetingFromQuestion: settings.stripGreetingFromQuestion,
-    similarityThreshold: settings.greetingSimilarityThreshold,
-    modifiers: settings.greetingModifiers,
-  });
-  if (detection.intent === "UNKNOWN" && settings.smartGreetingEnabled && settings.semanticGreetingEnabled) {
-    detection = (await detectSemanticGreeting(
-      detection.normalizedMessage,
-      settings.rules,
-      settings.greetingSimilarityThreshold,
-    )) ?? { ...detection, intent: "QUESTION", ragQuery: message.trim(), matchMethod: "NORMALIZED" };
-  }
-
-  const analyticsMetadata = {
-    originalMessage: message,
-    normalizedMessage: detection.normalizedMessage,
-    detectedIntent: detection.greetingWithQuestion ? "QUESTION" : detection.intent,
-    matchedCanonicalRule: detection.matchedCanonicalRule,
-    matchMethod: detection.matchMethod,
-  };
-  const greeting = greetingMetadata(detection, settings);
-
-  if (detection.intent === "GREETING" || detection.intent === "NOISE") {
-    const reason = detection.intent;
-    await logBotEventBestEffort({
-      type: "GREETING",
-      question: message,
-      route: "WELCOME",
-      metadata: { reason, ...analyticsMetadata },
-    });
-    return {
-      success: true,
-      route: "WELCOME",
-      reason,
-      normalizedMessage: detection.normalizedMessage,
-      responseText: welcomeText(settings, menuText, detection.matchedRule?.reply),
-      ragQuery: null,
-      resolvedMenuItem: null,
-      requiresHuman: false,
-      botStatus: settings.status,
-      matchedCanonicalRule: detection.matchedCanonicalRule,
-      matchMethod: detection.matchMethod,
-      greeting,
-    };
-  }
-
+  // 4. QUESTION
   await logBotEventBestEffort({
     type: "QUESTION",
     question: message,

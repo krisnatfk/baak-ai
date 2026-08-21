@@ -46,9 +46,9 @@ export async function POST(request: Request) {
   let conversationRecorded = false;
 
   // QUESTION akan dicatat oleh /api/rag/context agar tidak tersimpan dua kali.
-  // WELCOME berhenti di resolver, jadi USER + balasan deterministik harus
-  // dicatat di sini supaya greeting/noise tidak hilang dari Percakapan.
-  if (sessionId && result.route === "WELCOME") {
+  // WELCOME & THANKS berhenti di resolver, jadi USER (+ balasan bila ada) harus
+  // dicatat di sini supaya tidak hilang dari Percakapan.
+  if (sessionId && (result.route === "WELCOME" || result.route === "THANKS")) {
     try {
       await recordChatMessage({
         sessionId,

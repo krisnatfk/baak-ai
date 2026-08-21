@@ -9,7 +9,7 @@ type BotEventType = typeof botAnalyticsEvents.$inferInsert.type;
 export interface BotEventInput {
   type: BotEventType;
   question?: string | null;
-  route?: "WELCOME" | "MENU" | "QUESTION" | null;
+  route?: "WELCOME" | "MENU" | "QUESTION" | "THANKS" | null;
   matchedFaqId?: string | null;
   confidence?: string | null;
   score?: number | null;

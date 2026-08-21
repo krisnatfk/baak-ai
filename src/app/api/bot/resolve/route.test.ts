@@ -64,4 +64,18 @@ describe("POST /api/bot/resolve conversation capture", () => {
     expect((await response.json()).conversationRecorded).toBe(false);
     expect(mocks.record).not.toHaveBeenCalled();
   });
+
+  it("mencatat USER untuk THANKS jika session tersedia", async () => {
+    mocks.resolve.mockResolvedValue({
+      ...welcome,
+      route: "THANKS",
+      reason: "THANKS",
+      responseText: null,
+      ragQuery: null,
+      normalizedMessage: "terima kasih kak",
+    });
+    const response = await POST(request({ message: "terima kasih kak", sessionId: "wa-3", sender: "6283" }));
+    expect((await response.json()).conversationRecorded).toBe(true);
+    expect(mocks.record).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "wa-3", role: "USER", content: "terima kasih kak" }));
+  });
 });

@@ -66,6 +66,23 @@ describe("smart intent normalization", () => {
     expect(detectDeterministicIntent("biaya?", rules, options).intent).toBe("QUESTION");
   });
 
+  it.each([
+    "terima kasih",
+    "terima kasih kak",
+    "makasih",
+    "makasih kak",
+    "thanks",
+    "thank you",
+    "oke terima kasih",
+    "baik terima kasih",
+    "sip terima kasih",
+  ])("mengenali ucapan %s sebagai intent THANKS", (message) => {
+    expect(detectDeterministicIntent(message, rules, options)).toMatchObject({
+      intent: "THANKS",
+      matchMethod: "NORMALIZED",
+    });
+  });
+
   it("semantic fallback memetakan pesan ambigu ke canonical greeting", async () => {
     mocks.getEmbeddingProvider.mockReturnValue({
       embedTexts: vi.fn().mockResolvedValue([

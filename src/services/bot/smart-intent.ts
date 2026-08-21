@@ -5,7 +5,7 @@ import { cosineSimilarity } from "@/services/faq/duplicate";
 import { normalizeText } from "@/services/rag/normalize";
 
 export type IntentMatchMethod = "EXACT" | "NORMALIZED" | "FUZZY" | "SEMANTIC" | "LLM_FALLBACK";
-export type SmartIntent = "GREETING" | "NOISE" | "QUESTION" | "UNKNOWN";
+export type SmartIntent = "GREETING" | "NOISE" | "THANKS" | "QUESTION" | "UNKNOWN";
 
 export interface IntentRule {
   type: "GREETING" | "NOISE";
@@ -32,6 +32,31 @@ export interface SmartGreetingOptions {
   similarityThreshold: number;
   modifiers: string;
 }
+
+export const THANKS_PATTERNS = [
+  "terima kasih",
+  "terimakasih",
+  "makasih",
+  "makasih kak",
+  "thanks",
+  "thank you",
+  "oke terima kasih",
+  "baik terima kasih",
+  "sip terima kasih",
+  "ok terima kasih",
+  "oke makasih",
+  "ok makasih",
+  "siap terima kasih",
+  "siap makasih",
+  "terima kasih banyak",
+  "makasih banyak",
+  "trims",
+  "thx",
+  "tq",
+  "ty",
+  "matur nuwun",
+  "maturnuwun",
+] as const;
 
 const QUESTION_WORDS = new Set([
   "apa", "apakah", "berapa", "kapan", "dimana", "mana", "bagaimana",
@@ -101,6 +126,28 @@ function isMeaningfulQuestion(value: string, original: string): boolean {
     tokens.some((token) => QUESTION_WORDS.has(token) || SHORT_QUESTION_TERMS.has(token)) ||
     tokens.length >= 2
   );
+}
+
+export function isThanksMessage(normalizedMessage: string, originalMessage: string): boolean {
+  const hasThanksPattern = THANKS_PATTERNS.some((pattern) =>
+    normalizedMessage.includes(pattern),
+  );
+  if (!hasThanksPattern) return false;
+
+  let remainder = normalizedMessage;
+  for (const pattern of THANKS_PATTERNS) {
+    remainder = remainder.replace(pattern, " ");
+  }
+  const cleanedRemainder = remainder
+    .replace(/\b(?:kak|kaka|admin|min|mimin|mas|mba|mbak|pak|bu|bro|gan|ya|nih|dong|oke|ok|baik|sip|siap)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (cleanedRemainder && isMeaningfulQuestion(cleanedRemainder, originalMessage)) {
+    return false;
+  }
+
+  return true;
 }
 
 function ragQueryFromRemainder(remainder: string, original: string): string {
@@ -236,6 +283,10 @@ export function detectDeterministicIntent(
 
   if (/^[\p{P}\p{S}\s]+$/u.test(originalMessage) || /^p{1,4}$/i.test(normalizedMessage)) {
     return result("NOISE", normalizedMessage, { matchMethod: "NORMALIZED" });
+  }
+
+  if (isThanksMessage(normalizedMessage, originalMessage)) {
+    return result("THANKS", normalizedMessage, { matchMethod: "NORMALIZED" });
   }
 
   const tokens = normalizedMessage.split(" ").filter(Boolean);

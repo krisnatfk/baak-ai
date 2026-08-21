@@ -88,7 +88,32 @@ describe("resolveBotMessage", () => {
     });
   });
 
-  it.each(["biaya?", "beasiswa?", "syarat?", "daftar?", "prodi?", "berapa biaya kuliah?", "gedung b dimana?"])("%s tetap QUESTION", async (message) => {
+  it.each([
+    "terima kasih kak",
+    "makasih",
+    "oke terima kasih",
+    "makasih kak",
+    "thanks",
+    "thank you",
+    "baik terima kasih",
+    "sip terima kasih",
+    "terima kasih banyak kak",
+    "siap makasih",
+  ])("ucapan terima kasih %s menghasilkan route THANKS", async (message) => {
+    const response = await resolveBotMessage(message);
+    expect(response).toMatchObject({
+      success: true,
+      route: "THANKS",
+      reason: "THANKS",
+      responseText: null,
+      ragQuery: null,
+      resolvedMenuItem: null,
+      requiresHuman: false,
+      botStatus: "ACTIVE",
+    });
+  });
+
+  it.each(["biaya?", "beasiswa?", "syarat?", "daftar?", "prodi?", "berapa biaya kuliah?", "gedung b dimana?", "jadwal PMB kapan"])("%s tetap QUESTION", async (message) => {
     expect(await resolveBotMessage(message)).toMatchObject({ route: "QUESTION", ragQuery: message });
   });
 
