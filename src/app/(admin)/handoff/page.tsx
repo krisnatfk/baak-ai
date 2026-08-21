@@ -94,7 +94,7 @@ export default async function HandoffPage({
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Handoff Manusia</h1>
         <p className="text-sm text-muted-foreground">
-          {total} permintaan yang dialihkan dari bot WhatsApp ke petugas BAAK.
+          {total} permintaan yang dialihkan dari bot WhatsApp ke petugas PMB.
         </p>
       </div>
 

@@ -38,7 +38,7 @@ export default async function DashboardLayout({
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem>
-                <BreadcrumbPage>BAAK AI</BreadcrumbPage>
+                <BreadcrumbPage>PMB AI</BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>

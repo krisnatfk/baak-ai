@@ -89,26 +89,26 @@ export function buildCsv(headers: string[], rows: string[][]): string {
 
 const DEMO_ROWS: ExportFaqRow[] = [
   {
-    question: "[CONTOH] Bagaimana cara mendaftar PKL?",
+    question: "[CONTOH] Bagaimana cara mendaftar penerimaan mahasiswa baru?",
     answer:
-      "Mahasiswa mengajukan surat permohonan PKL ke BAAK dengan melampirkan KHS dan transkrip.",
-    category: "PKL",
-    audience: "MAHASISWA",
+      "Calon mahasiswa mengajukan pendaftaran online melalui portal SPMB dengan mengisi formulir dan mengunggah dokumen persyaratan.",
+    category: "Pendaftaran",
+    audience: "CALON_MAHASISWA",
     status: "DRAFT",
-    keywords: ["PKL", "magang", "pendaftaran"],
-    referenceUrl: "",
-    primarySource: "Panduan PKL",
+    keywords: ["PMB", "pendaftaran", "mahasiswa baru", "spmb"],
+    referenceUrl: "https://spmb.teknokrat.ac.id",
+    primarySource: "Panduan PMB",
     officialSources: [
-      { title: "Panduan PKL", url: "https://baak.example.ac.id/pkl" },
+      { title: "Panduan PMB", url: "https://spmb.teknokrat.ac.id/panduan" },
     ],
-    relatedQuestions: ["Apa syarat PKL?"],
-    alternativeQuestions: ["Gimana cara daftar PKL?", "Cara ngajuin PKL gimana?"],
-    media: [{ caption: "Alur pendaftaran", url: "https://baak.example.ac.id/img/pkl.png" }],
+    relatedQuestions: ["Apa syarat pendaftaran PMB?"],
+    alternativeQuestions: ["Gimana cara daftar PMB?", "Cara daftar kuliah gimana?"],
+    media: [{ caption: "Alur pendaftaran PMB", url: "https://spmb.teknokrat.ac.id/img/alur-pmb.png" }],
     attachments: [
       {
-        title: "Formulir PKL",
+        title: "Brosur PMB",
         type: "PDF",
-        url: "https://baak.example.ac.id/files/form-pkl.pdf",
+        url: "https://spmb.teknokrat.ac.id/files/brosur-pmb.pdf",
       },
     ],
     internalNote: "Verifikasi syarat terbaru sebelum dipublikasikan.",

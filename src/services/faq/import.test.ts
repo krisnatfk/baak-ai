@@ -171,8 +171,8 @@ describe("parseFaqImportFile (XLSX)", () => {
     expect(rows.length).toBeGreaterThan(0);
     // Header wajib terbaca → question/answer terpetakan.
     expect(rows[0].question).toContain("[CONTOH]");
-    expect(rows[0].answer).toContain("permohonan");
-    expect(rows[0].category).toBe("PKL");
+    expect(rows[0].answer).toContain("pendaftaran");
+    expect(rows[0].category).toBe("Pendaftaran");
   });
 
   it("membaca file XLSX ber-prefix namespace (gaya generator WPS/lain)", async () => {

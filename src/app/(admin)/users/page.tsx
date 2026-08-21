@@ -71,7 +71,7 @@ export default async function UsersPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Pengguna</h1>
           <p className="text-sm text-muted-foreground">
-            {rows.length} akun tim BAAK ({activeCount} aktif). Manajemen akun
+            {rows.length} akun tim PMB ({activeCount} aktif). Manajemen akun
             hanya untuk SUPER_ADMIN.
           </p>
         </div>

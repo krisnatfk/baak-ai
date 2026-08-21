@@ -557,7 +557,7 @@ export function FaqForm({
               <Input
                 id="sourceUrl"
                 type="url"
-                placeholder="https://baak.example.ac.id/... (opsional)"
+                placeholder="https://spmb.teknokrat.ac.id/... (opsional)"
                 aria-invalid={!!errors.sourceUrl}
                 {...register("sourceUrl")}
               />

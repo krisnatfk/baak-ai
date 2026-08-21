@@ -176,7 +176,7 @@ export function SourceDialog({ mode, source, trigger }: SourceDialogProps) {
             <Input
               id="source-url"
               type="url"
-              placeholder="https://baak.example.ac.id/... "
+              placeholder="https://spmb.teknokrat.ac.id/... "
               aria-invalid={!!errors.url}
               {...register("url")}
             />

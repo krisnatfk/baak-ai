@@ -36,18 +36,36 @@ const DEMO_USERS: Array<{
 }> = [
   {
     name: "Super Admin (Demo)",
-    email: "superadmin@baak.test",
+    email: "superadmin@pmb.test",
     password: "SuperAdmin@123",
     role: "SUPER_ADMIN",
   },
   {
     name: "Admin (Demo)",
-    email: "admin@baak.test",
+    email: "admin@pmb.test",
     password: "Admin@123",
     role: "ADMIN",
   },
   {
     name: "Viewer (Demo)",
+    email: "viewer@pmb.test",
+    password: "Viewer@123",
+    role: "VIEWER",
+  },
+  {
+    name: "Super Admin (Demo Legacy)",
+    email: "superadmin@baak.test",
+    password: "SuperAdmin@123",
+    role: "SUPER_ADMIN",
+  },
+  {
+    name: "Admin (Demo Legacy)",
+    email: "admin@baak.test",
+    password: "Admin@123",
+    role: "ADMIN",
+  },
+  {
+    name: "Viewer (Demo Legacy)",
     email: "viewer@baak.test",
     password: "Viewer@123",
     role: "VIEWER",

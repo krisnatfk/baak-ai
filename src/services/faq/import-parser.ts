@@ -12,7 +12,7 @@ import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import Papa from "papaparse";
 
-/** Separator untuk kolom bernilai banyak (dokumen resmi BAAK). */
+/** Separator untuk kolom bernilai banyak (dokumen resmi PMB). */
 export const ARRAY_SEPARATOR = "||";
 
 /** Kolom kanonikal (urutan = urutan header template). */

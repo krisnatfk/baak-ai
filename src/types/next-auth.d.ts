@@ -1,5 +1,5 @@
 /**
- * Perluasan tipe NextAuth (JWT + Session) untuk data role BAAK AI.
+ * Perluasan tipe NextAuth (JWT + Session) untuk data role PMB AI.
  */
 
 import type { DefaultSession } from "next-auth";

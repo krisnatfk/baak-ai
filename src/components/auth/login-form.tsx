@@ -58,7 +58,7 @@ export function LoginForm() {
           <GraduationCap className="size-6 text-white" />
         </div>
         <h1 className="font-heading text-xl font-bold tracking-[-0.01em] text-white">
-          Masuk ke BAAK AI
+          Masuk ke PMB AI
         </h1>
         <p className="mt-1 text-sm text-white/70">
           Admin & Knowledge Management System
@@ -79,7 +79,7 @@ export function LoginForm() {
             id="email"
             type="email"
             autoComplete="email"
-            placeholder="admin@baak.test"
+            placeholder="admin@pmb.test"
             {...register("email")}
             aria-invalid={!!errors.email}
           />
@@ -117,7 +117,7 @@ export function LoginForm() {
       </form>
 
       <div className="border-t bg-muted/50 px-6 py-4 text-center text-xs text-muted-foreground">
-        Akses dibatasi untuk petugas BAAK.
+        Akses dibatasi untuk petugas PMB.
       </div>
     </div>
   );

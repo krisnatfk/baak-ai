@@ -24,7 +24,7 @@ function roleMeta(role: string): { label: string; icon: typeof Bot; classes: str
   switch (role) {
     case "AI":
       return {
-        label: "BAAK AI",
+        label: "PMB AI",
         icon: Bot,
         classes:
           "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",

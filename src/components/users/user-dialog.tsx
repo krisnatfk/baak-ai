@@ -97,7 +97,7 @@ export function CreateUserDialog({ roles, trigger }: CreateUserDialogProps) {
         <DialogHeader>
           <DialogTitle>Tambah Pengguna</DialogTitle>
           <DialogDescription>
-            Buat akun untuk tim BAAK. Pengguna baru langsung aktif dan dapat
+            Buat akun untuk tim PMB. Pengguna baru langsung aktif dan dapat
             masuk dengan password yang dibuatkan.
           </DialogDescription>
         </DialogHeader>
@@ -121,7 +121,7 @@ export function CreateUserDialog({ roles, trigger }: CreateUserDialogProps) {
             <Input
               id="user-email"
               type="email"
-              placeholder="nama@baak.ac.id"
+              placeholder="nama@pmb.ac.id"
               autoComplete="off"
               aria-invalid={!!errors.email}
               {...register("email")}

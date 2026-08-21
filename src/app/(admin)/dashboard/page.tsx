@@ -62,7 +62,7 @@ export default async function DashboardPage() {
           Selamat datang, {user.name.split(" ")[0]}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Ringkasan sistem BAAK AI — knowledge base, percakapan, dan kualitas
+          Ringkasan sistem PMB AI — knowledge base, percakapan, dan kualitas
           jawaban bot.
         </p>
       </div>
@@ -92,7 +92,7 @@ export default async function DashboardPage() {
         <CardHeader>
           <CardTitle>Panduan Cepat</CardTitle>
           <CardDescription>
-            Alur kerja harian petugas BAAK.
+            Alur kerja harian petugas PMB.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-3">
