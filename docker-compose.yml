@@ -1,94 +1,182 @@
 # =========================================================
 #  BAAK AI — Docker Compose (produksi lokal)
 #
-#  Service :
-#   - postgres : PostgreSQL 16 + pgvector (host port 5433,
-#                volume baak_pgdata, otomatis CREATE EXTENSION vector)
-#   - app      : BAAK AI (Next.js standalone, host port 3010)
-#   - n8n      : orkestrator WhatsApp (WAHA) — TIDAK BOLEH diubah/hapus.
+#  Service:
+#   - postgres : PostgreSQL 16 + pgvector
+#   - app      : PMB / BAAK AI Next.js
+#   - n8n      : Orkestrator WhatsApp
+#   - waha     : WhatsApp HTTP API
 #
-#  Konfigurasi app dibaca dari file `.env` pada folder ini
-#  (app.env_file mengarah ke `.env`). Salin .env.example -> .env.
+#  Prinsip:
+#   - n8n public melalui:
+#       https://n8n.intansolusindo.cloud
 #
-#  Usage:
-#     docker compose up -d --build
-#     docker compose logs -f app
+#   - WAHA TIDAK dipublish ke internet.
+#     Dashboard/API host hanya:
+#       http://localhost:3005
+#
+#   - Antar-container:
+#       n8n -> http://waha:3000
+#
+#   - Session WAHA persistent di Docker named volume.
 # =========================================================
 
 services:
+
+  # =======================================================
+  # POSTGRES
+  # =======================================================
   postgres:
     image: pgvector/pgvector:pg16
     container_name: baak-postgres
     restart: unless-stopped
+
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-baak}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-baak_pass}
       POSTGRES_DB: ${POSTGRES_DB:-baak_ai}
       TZ: Asia/Jakarta
+
     ports:
-      # Host 5433 menghindari bentrok dengan Postgres lokal (5432).
       - "5433:5432"
+
     volumes:
       - baak_pgdata:/var/lib/postgresql/data
-      # Inisialisasi: buat ekstensi pgvector otomatis saat volume pertama dibuat.
       - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-baak} -d ${POSTGRES_DB:-baak_ai}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-baak} -d ${POSTGRES_DB:-baak_ai}"
+        ]
       interval: 5s
       timeout: 5s
       retries: 12
 
+
+  # =======================================================
+  # APP
+  # =======================================================
   app:
     build:
       context: .
       dockerfile: Dockerfile
+
     container_name: baak-app
     restart: unless-stopped
+
     depends_on:
       postgres:
         condition: service_healthy
+
     ports:
       - "3010:3010"
+
     env_file:
       - .env
+
     environment:
-      # Di dalam jaringan compose, DB host adalah nama service `postgres`.
-      # Override ini menggantikan DATABASE_URL dari .env (yang memakai host port).
       DATABASE_URL: postgresql://${POSTGRES_USER:-baak}:${POSTGRES_PASSWORD:-baak_pass}@postgres:5432/${POSTGRES_DB:-baak_ai}
+
       APP_URL: ${APP_URL:-http://localhost:3010}
+
       UPLOAD_DIR: /app/uploads
+
       BOT_MEDIA_BASE_URL: ${BOT_MEDIA_BASE_URL:-}
-      # Data demo hanya di-seed bila diinginkan (default: tidak).
+
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-0}
+
     volumes:
-      # Satu storage fisik untuk upload host dan runtime container.
+      # Upload website dan container menggunakan storage fisik sama.
       - ./uploads:/app/uploads
+
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3010/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""]
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:3010/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""
+        ]
       interval: 10s
       timeout: 5s
       retries: 6
       start_period: 20s
 
+
+  # =======================================================
+  # N8N
+  # =======================================================
   n8n:
     image: docker.n8n.io/n8nio/n8n:latest
     container_name: baak-n8n
     restart: unless-stopped
+
     ports:
       - "5678:5678"
+
     environment:
       - TZ=Asia/Jakarta
       - GENERIC_TIMEZONE=Asia/Jakarta
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
       - N8N_RUNNERS_ENABLED=true
+
+      # Domain public n8n
       - N8N_WEBHOOK_URL=https://n8n.intansolusindo.cloud
       - N8N_EDITOR_BASE_URL=https://n8n.intansolusindo.cloud
+
       - N8N_PROXY_HOPS=1
+
     volumes:
       - n8n_data:/home/node/.n8n
 
+
+  # =======================================================
+  # WAHA
+  # =======================================================
+  waha:
+    # PENTING:
+    # Gunakan image yang SAMA PERSIS dengan container WAHA sekarang.
+    #
+    # Cek dengan:
+    # docker inspect waha --format '{{.Config.Image}}'
+    #
+    image: devlikeapro/waha
+
+    container_name: waha
+    restart: unless-stopped
+
+    # Semua credential WAHA disimpan di file ini.
+    # Jangan commit .env.waha ke Git.
+    env_file:
+      - .env.waha
+
+    ports:
+      # WAHA hanya dapat diakses dari komputer lokal.
+      # Tidak diekspos langsung ke LAN / internet.
+      - "127.0.0.1:3005:3000"
+
+    volumes:
+      # Session WhatsApp persisten.
+      # Recreate container tidak menghapus login WhatsApp.
+      - waha_sessions:/app/.sessions
+
+
+# =========================================================
+# VOLUMES
+# =========================================================
 volumes:
+
   n8n_data:
+
   baak_pgdata:
+
   baak_uploads:
-    # Backup legacy; sengaja dipertahankan tetapi tidak lagi di-mount ke app.
+    # Backup legacy.
+    # Sengaja dipertahankan tetapi tidak lagi di-mount ke app.
+
+  waha_sessions:
+    # Volume ini dibuat/diisi manual dari session WAHA lama.
+    # Dibuat external agar `docker compose down -v`
+    # tidak ikut menghapus session WhatsApp.
+    external: true
+    name: baak-ai_waha_sessions
