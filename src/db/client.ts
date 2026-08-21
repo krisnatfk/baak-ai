@@ -1,5 +1,5 @@
 /**
- * BAAK AI — koneksi database (server-only).
+ * AI PMB — koneksi database (server-only).
  *
  * Modul ini TIDAK BOLEH di-import dari kode client (memuat DATABASE_URL).
  * Gunakan di Route Handlers / Server Actions / scripts saja.

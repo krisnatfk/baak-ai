@@ -1,4 +1,4 @@
-# BAAK AI — RAG (Retrieval-Augmented Generation)
+# AI PMB — RAG (Retrieval-Augmented Generation)
 
 ## Konsep
 
@@ -82,7 +82,7 @@ Fungsi `buildRagContext()` menghasilkan prompt siap pakai untuk n8n. Prompt
 **tidak memuat** ID, skor kemiripan, atau detail internal apa pun:
 
 ```text
-Kamu adalah asisten akademik universitas (BAAK AI). Jawablah pertanyaan
+Kamu adalah asisten akademik universitas (AI PMB). Jawablah pertanyaan
 pengguna dengan bahasa Indonesia yang ramah dan singkat.
 
 === KNOWLEDGE BASE ===

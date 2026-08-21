@@ -1,5 +1,5 @@
 /**
- * BAAK AI — buat database PostgreSQL jika belum ada.
+ * AI PMB — buat database PostgreSQL jika belum ada.
  *
  * Postgres tidak punya "CREATE DATABASE IF NOT EXISTS". Skrip ini mencoba
  * terhubung ke database target; bila gagal (database tidak ada), ia terhubung

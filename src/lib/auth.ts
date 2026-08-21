@@ -1,5 +1,5 @@
 /**
- * Konfigurasi NextAuth (credentials + JWT) untuk BAAK AI.
+ * Konfigurasi NextAuth (credentials + JWT) untuk AI PMB.
  *
  * - Hanya provider credentials (email + password, bcrypt).
  * - JWT berisi uid/roleId/roleKey; session divalidasi ulang ke database

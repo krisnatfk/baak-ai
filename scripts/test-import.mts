@@ -169,7 +169,7 @@ async function runDbBulkInsert(n: number): Promise<void> {
 
 async function main() {
   console.log("=".repeat(72));
-  console.log("BAAK AI — Test bulk import FAQ (1/10/100/2000)");
+  console.log("AI PMB — Test bulk import FAQ (1/10/100/2000)");
   console.log(`  DB   : ${process.env.DATABASE_URL?.replace(/:[^:@/]+@/, ":****@")}`);
   console.log("=".repeat(72));
 

@@ -1,4 +1,4 @@
-# BAAK AI — Bulk Import & Generate FAQ
+# AI PMB — Bulk Import & Generate FAQ
 
 Dokumen ini menjelaskan fitur **Bulk Import FAQ**, **Export**, **Generate FAQ
 dari dokumen**, serta mekanisme **duplicate detection** dan **batch embedding**.

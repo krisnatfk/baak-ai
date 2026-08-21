@@ -1,5 +1,5 @@
 /**
- * BAAK AI — migrasi database (custom).
+ * AI PMB — migrasi database (custom).
  *
  * Mengapa custom (bukan `drizzle-kit migrate` langsung)?
  *   1. drizzle-kit TIDAK pernah mengeluarkan `CREATE EXTENSION vector`.

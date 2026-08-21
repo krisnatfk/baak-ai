@@ -1,5 +1,5 @@
 /**
- * BAAK AI — Drizzle ORM Schema (PostgreSQL 16 + pgvector)
+ * AI PMB — Drizzle ORM Schema (PostgreSQL 16 + pgvector)
  *
  * Konvensi:
  *  - PK uuid gen_random_uuid()

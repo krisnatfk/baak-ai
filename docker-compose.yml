@@ -1,9 +1,9 @@
 # =========================================================
-#  BAAK AI — Docker Compose (produksi lokal)
+#  AI PMB — Docker Compose (produksi lokal)
 #
 #  Service:
 #   - postgres : PostgreSQL 16 + pgvector
-#   - app      : PMB / BAAK AI Next.js
+#   - app      : PMB / AI PMB Next.js
 #   - n8n      : Orkestrator WhatsApp
 #   - waha     : WhatsApp HTTP API
 #

@@ -1,4 +1,4 @@
-# BAAK AI — Database Schema
+# AI PMB — Database Schema
 
 > PostgreSQL 16 + pgvector. ORM: Drizzle. Primary keys: `uuid` (`gen_random_uuid()`).
 > Semua timestamp `timestamptz`. Soft-delete dipakai di tabel knowledge.

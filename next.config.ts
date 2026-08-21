@@ -11,7 +11,16 @@ const nextConfig: NextConfig = {
   experimental: {
     // Form FAQ dapat membawa satu media + satu attachment (masing-masing
     // divalidasi MAX_UPLOAD_MB=15 di server), plus overhead multipart.
-    serverActions: { bodySizeLimit: "32mb" },
+    serverActions: {
+      bodySizeLimit: "32mb",
+      allowedOrigins: [
+        "wa.intansolusindo.cloud",
+        "localhost:3001",
+        "localhost:3010",
+        "127.0.0.1:3001",
+        "127.0.0.1:3010",
+      ],
+    },
   },
   // Langkah aman: hanya origin lokal yang boleh memanggil Server Actions.
   // Pada deployment LAN tanpa domain, biarkan origin bawaan. Sesuaikan bila

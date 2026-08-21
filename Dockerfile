@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # =========================================================
-#  BAAK AI — production image (multi-stage)
+#  AI PMB — production image (multi-stage)
 #  Build context : apps/baak-ai (folder ini)
 #  Runtime       : node:24-slim + Next.js standalone
 # =========================================================

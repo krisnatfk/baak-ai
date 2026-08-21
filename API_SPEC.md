@@ -1,4 +1,4 @@
-# BAAK AI — API Specification
+# AI PMB — API Specification
 
 Format JSON, UTF-8. Semua timestamp `ISO-8601`.
 

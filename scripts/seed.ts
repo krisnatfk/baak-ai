@@ -1,5 +1,5 @@
 /**
- * BAAK AI — seed database (data DEMO / DEVELOPMENT).
+ * AI PMB — seed database (data DEMO / DEVELOPMENT).
  *
  * PENTING:
  *  - Skrip ini HANYA membuat data demo yang jelas dilabeli "DEMO".
@@ -27,50 +27,56 @@ import {
 
 const PASSWORD_SALT_ROUNDS = 10;
 
-/** Kredensial demo — HARUS diganti setelah deploy production. */
+/** Kredensial demo / default — ganti password setelah deploy bila perlu. */
 const DEMO_USERS: Array<{
   name: string;
   email: string;
   password: string;
   role: RoleKey;
 }> = [
-  {
-    name: "Super Admin (Demo)",
-    email: "superadmin@pmb.test",
-    password: "SuperAdmin@123",
-    role: "SUPER_ADMIN",
-  },
-  {
-    name: "Admin (Demo)",
-    email: "admin@pmb.test",
-    password: "Admin@123",
-    role: "ADMIN",
-  },
-  {
-    name: "Viewer (Demo)",
-    email: "viewer@pmb.test",
-    password: "Viewer@123",
-    role: "VIEWER",
-  },
-  {
-    name: "Super Admin (Demo Legacy)",
-    email: "superadmin@baak.test",
-    password: "SuperAdmin@123",
-    role: "SUPER_ADMIN",
-  },
-  {
-    name: "Admin (Demo Legacy)",
-    email: "admin@baak.test",
-    password: "Admin@123",
-    role: "ADMIN",
-  },
-  {
-    name: "Viewer (Demo Legacy)",
-    email: "viewer@baak.test",
-    password: "Viewer@123",
-    role: "VIEWER",
-  },
-];
+    {
+      name: "Super Admin PMB",
+      email: "adminpmb@teknokrat.ac.id",
+      password: "admin123",
+      role: "SUPER_ADMIN",
+    },
+    {
+      name: "Super Admin (Demo)",
+      email: "superadmin@pmb.test",
+      password: "SuperAdmin@123",
+      role: "SUPER_ADMIN",
+    },
+    {
+      name: "Admin (Demo)",
+      email: "admin@pmb.test",
+      password: "Admin@123",
+      role: "ADMIN",
+    },
+    {
+      name: "Viewer (Demo)",
+      email: "viewer@pmb.test",
+      password: "Viewer@123",
+      role: "VIEWER",
+    },
+    {
+      name: "Super Admin (Demo Legacy)",
+      email: "superadmin@baak.test",
+      password: "SuperAdmin@123",
+      role: "SUPER_ADMIN",
+    },
+    {
+      name: "Admin (Demo Legacy)",
+      email: "admin@baak.test",
+      password: "Admin@123",
+      role: "ADMIN",
+    },
+    {
+      name: "Viewer (Demo Legacy)",
+      email: "viewer@baak.test",
+      password: "Viewer@123",
+      role: "VIEWER",
+    },
+  ];
 
 const ROLE_PERMISSIONS: Record<RoleKey, string[]> = {
   SUPER_ADMIN: [
@@ -154,18 +160,32 @@ async function seedUsers() {
       .from(users)
       .where(eq(users.email, u.email))
       .limit(1);
-    if (existing.length > 0) continue;
     const passwordHash = await bcrypt.hash(u.password, PASSWORD_SALT_ROUNDS);
-    await db.insert(users).values({
-      name: u.name,
-      email: u.email,
-      passwordHash,
-      roleId: roleMap[u.role],
-      status: "ACTIVE",
-    });
-    console.log(
-      `[seed] User demo dibuat: ${u.email} (${u.role}) — password: ${u.password}`,
-    );
+    if (existing.length > 0) {
+      await db
+        .update(users)
+        .set({
+          name: u.name,
+          passwordHash,
+          roleId: roleMap[u.role],
+          status: "ACTIVE",
+        })
+        .where(eq(users.id, existing[0].id));
+      console.log(
+        `[seed] User diperbarui: ${u.email} (${u.role})`,
+      );
+    } else {
+      await db.insert(users).values({
+        name: u.name,
+        email: u.email,
+        passwordHash,
+        roleId: roleMap[u.role],
+        status: "ACTIVE",
+      });
+      console.log(
+        `[seed] User dibuat: ${u.email} (${u.role}) — password: ${u.password}`,
+      );
+    }
   }
   console.log("[seed] Users OK.");
 }

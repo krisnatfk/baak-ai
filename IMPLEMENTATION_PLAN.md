@@ -1,4 +1,4 @@
-# BAAK AI — Implementation Plan
+# AI PMB — Implementation Plan
 
 > **Status:** Phase 1 — Audit & Planning
 > **Tanggal:** 2026-08-13
@@ -104,7 +104,7 @@ Port host yang sudah terpakai dan tidak boleh bentrok:
 | 5432 | PostgreSQL host (DinoAI) |
 | 8000 | LLM Gateway lokal |
 
-Port yang dipakai BAAK AI:
+Port yang dipakai AI PMB:
 
 | Port | Service | Keterangan |
 |---|---|---|

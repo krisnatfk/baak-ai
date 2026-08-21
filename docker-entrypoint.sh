@@ -1,6 +1,6 @@
 #!/bin/sh
 # =========================================================
-#  BAAK AI — entrypoint container
+#  AI PMB — entrypoint container
 #  1) Tunggu PostgreSQL siap (probe TCP via node — nc tidak ada di image).
 #  2) Jalankan migrasi database (custom script: CREATE EXTENSION + drizzle).
 #  3) (Opsional) seed data DEMO bila tabel kosong & SEED_DEMO_DATA=1.
@@ -70,5 +70,5 @@ if [ "${SEED_DEMO_DATA:-0}" = "1" ]; then
   }
 fi
 
-echo "[entrypoint] Starting BAAK AI server di 0.0.0.0:${PORT} ..."
+echo "[entrypoint] Starting AI PMB server di 0.0.0.0:${PORT} ..."
 exec "$@"

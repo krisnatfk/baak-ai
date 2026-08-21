@@ -1,12 +1,12 @@
-# BAAK AI — Integrasi n8n
+# AI PMB — Integrasi n8n
 
 n8n yang sedang berjalan **tidak diubah strukturnya**. Kita hanya menambahkan satu
-node HTTP Request yang memanggil endpoint BAAK AI, lalu memanfaatkan responsnya
+node HTTP Request yang memanggil endpoint AI PMB, lalu memanfaatkan responsnya
 sebagai konteks untuk AI Agent / Local LLM yang sudah ada.
 
 ## Prasyarat
 
-- Aplikasi BAAK AI berjalan (dev `localhost:3001` / Docker `http://localhost:3010`).
+- Aplikasi AI PMB berjalan (dev `localhost:3001` / Docker `http://localhost:3010`).
 - `INTERNAL_API_KEY` sudah diset di `.env` aplikasi.
 - (Opsional) Embedding model lokal aktif — lihat `docs/RAG.md`.
 
@@ -41,7 +41,7 @@ WAHA Send Text ←───┘
 }
 ```
 
-> Ganti `${INTERNAL_API_KEY}` dengan nilai env BAAK AI (jangan hardcode di workflow bila memungkinkan; simpan sebagai n8n credential "Header Auth").
+> Ganti `${INTERNAL_API_KEY}` dengan nilai env AI PMB (jangan hardcode di workflow bila memungkinkan; simpan sebagai n8n credential "Header Auth").
 
 **Body (JSON):**
 ```json
@@ -98,7 +98,7 @@ n8n **IF node** setelah HTTP Request:
 - `found == true` → kirim ke AI Agent dengan prompt:
   ```
   Sistem Prompt (existing) + 
-  [Kontek dari BAAK AI]
+  [Kontek dari AI PMB]
   {{ $json.context }}
   ```
 - `found == false` → AI Agent menjawab dengan template:
