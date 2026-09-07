@@ -1,0 +1,3 @@
+# Normalisasi line-ending untuk migrasi Windows -> Linux.
+# File teks disimpan LF di repo; checkout di Windows boleh CRLF.
+* text=auto
